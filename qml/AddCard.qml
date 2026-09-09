@@ -8,6 +8,15 @@ Rectangle {
     signal saveRequested(string name, int sets, int reps, string band, string notiz)
     signal cancelRequested()
 
+    // Leert alle Felder, damit die nächste Übung sauber beginnt
+    function reset() {
+        nameF.text = ""
+        setsF.text = ""
+        repsF.text = ""
+        bandF.band = "rot"
+        notizF.text = ""
+    }
+
     width: parent.width - 8
     anchors.horizontalCenter: parent.horizontalCenter
     radius: 8
@@ -50,6 +59,7 @@ Rectangle {
                         parseInt(repsF.text),
                         bandF.band,
                         notizF.text)
+                    addCard.reset()
                 }
             }
             BaseButton {

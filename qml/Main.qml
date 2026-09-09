@@ -24,6 +24,55 @@ ApplicationWindow {
     property color accent: "#d4a843"
     property color accentText: "#1e1e2e"
 
+    // Höhe der Bildschirmtastatur (0 = ausgeblendet)
+    property int imHeight: 0
+
+    // Scrollt das zuletzt resized-Feld erneut sichtbar (nach Tastatur-Übergang)
+    Timer {
+        id: imScrollTimer
+        interval: 80
+        repeat: false
+        onTriggered: {
+            var f = root.activeFocusItem
+            if (f && f !== root)
+                root.bringIntoView(f)
+        }
+    }
+
+    function updateImHeight() {
+        var k = Qt.inputMethod.keyboardRectangle
+        var h = 0
+        if (Qt.inputMethod.visible && root.height > 0) {
+            h = Math.round(k.height)
+            if (k.y > 0)                       // Rechteck relativ zum Fenster nutzen
+                h = Math.round(root.height - k.y)
+            if (h <= 0)                        // Fallback, falls kein Rechteck gemeldet wird
+                h = Math.round(root.height * 0.4)
+            h = Math.min(h, Math.round(root.height * 0.7))   // sichere Obergrenze
+        }
+        root.imHeight = h
+        imScrollTimer.start()
+    }
+
+    // Scrollt ein fokussiertes Feld sichtbar, wenn die Tastatur es überdeckt
+    function bringIntoView(item) {
+        var pos = item.mapToItem(listCol, 0, 0)
+        var top = pos.y
+        var bottom = pos.y + item.height
+        if (top < exListFlick.contentY)
+            exListFlick.contentY = Math.max(0, top - 8)
+        else if (bottom > exListFlick.contentY + exListFlick.height)
+            exListFlick.contentY = bottom - exListFlick.height + 8
+    }
+
+    function hookFieldScrolling(card) {
+        var fields = [card.nameF, card.setsF, card.repsF, card.notizF]
+        for (var i = 0; i < fields.length; ++i) {
+            if (fields[i])
+                fields[i].entered.connect(function (f) { root.bringIntoView(f) })
+        }
+    }
+
     function startEdit(idx)  { editIndex = idx; addMode = false }
     function cancelEdit()    { editIndex = -1 }
     function openAdd()       { addMode = true; editIndex = -1 }
@@ -148,6 +197,7 @@ ApplicationWindow {
     // ---------- Inhalt ----------
     ColumnLayout {
         anchors.fill: parent
+        anchors.bottomMargin: root.imHeight
         spacing: 0
 
         // Wochentage
@@ -277,14 +327,36 @@ ApplicationWindow {
         // Übungsliste (scrollbar)
         // ============================
         Flickable {
+            id: exListFlick
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.topMargin: 6
             clip: true
+            interactive: true
             boundsBehavior: Flickable.StopAtBounds
             contentHeight: listCol.implicitHeight
 
-            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            // Schmaler, dezenter Scrollbalken am rechten Rand
+            ScrollBar.vertical: ScrollBar {
+                id: vbar
+                policy: ScrollBar.AsNeeded
+                width: 6
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                contentItem: Item {
+                    Rectangle {
+                        id: knob
+                        width: 6
+                        height: Math.max(28, vbar.size * (vbar.height - 24))
+                        y: vbar.position * (vbar.height - height)
+                        radius: 3
+                        color: vbar.active ? "#d4a843" : "#666688"
+                        opacity: 0.75
+                    }
+                }
+                background: Item { }
+            }
 
             Column {
                 id: listCol
@@ -370,6 +442,7 @@ ApplicationWindow {
                                 editLoader.item.exData = modelData
                                 editLoader.item.saveRequested.connect(gym.saveEdit)
                                 editLoader.item.cancelRequested.connect(root.cancelEdit)
+                                root.hookFieldScrolling(editLoader.item)
                             }
                         }
                     }
@@ -384,6 +457,7 @@ ApplicationWindow {
                     onLoaded: {
                         addLoader.item.saveRequested.connect(gym.addExercise)
                         addLoader.item.cancelRequested.connect(root.cancelAdd)
+                        root.hookFieldScrolling(addLoader.item)
                     }
                 }
             }
@@ -800,6 +874,13 @@ ApplicationWindow {
     // ============================
     // C++-Signale
     // ============================
+    Connections {
+        target: Qt.inputMethod
+        function onVisibleChanged()   { root.updateImHeight() }
+        function onKeyboardRectangleChanged() { root.updateImHeight() }
+        Component.onCompleted: root.updateImHeight()
+    }
+
     Connections {
         target: gym
         function onMessage(title, text) {

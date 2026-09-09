@@ -10,6 +10,7 @@ RowLayout {
     property string textValue: ""   // Initialwert
     property alias text: tf.text    // aktueller Text (lesen/schreiben)
     signal editingFinished()
+    signal entered()                 // Feld bekam Fokus (für Tastatur-Scroll)
 
     width: parent.width
     spacing: 8
@@ -33,5 +34,6 @@ RowLayout {
         inputMethodHints: fieldRow.number ? Qt.ImhDigitsOnly : Qt.ImhNone
         background: Rectangle { color: "#2f2f3f"; radius: 4 }
         onEditingFinished: fieldRow.editingFinished()
+        onActiveFocusChanged: if (activeFocus) fieldRow.entered()
     }
 }
