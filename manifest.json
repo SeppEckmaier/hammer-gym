@@ -9,7 +9,7 @@
         }
     },
     "framework": "$ENV{CLICK_FRAMEWORK}",
-    "maintainer": "sepp <sepp@local>",
+    "maintainer": "SeppEckmaier <SeppSA@protonmail.com>",
     "title": "Hammer-Gym",
     "version": "0.1.0"
 }
