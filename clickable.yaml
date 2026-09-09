@@ -1,0 +1,6 @@
+builder: "cmake"
+framework: "ubuntu-touch-24.04-1.x"
+
+# Dev dependencies installed inside the clickable build container.
+dependencies_target:
+  - "qtdeclarative5-dev"

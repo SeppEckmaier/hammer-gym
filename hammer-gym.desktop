@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Hammer-Gym
+Comment=Widerstandsband-Training mit Wochenplan und Satz-Tracking
+Exec=hammer-gym
+Icon=icons/hammer-gym.png
+Terminal=false
+Type=Application
+X-Ubuntu-Touch=true
+X-Ubuntu-Supported-Orientations=portrait
+Categories=Utility;

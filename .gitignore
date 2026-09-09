@@ -1,0 +1,18 @@
+# Build-Artefakte
+build/
+build-*/
+desktop/
+.clickable/
+*.o
+*.so
+*.so.*
+*.a
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# lokal
+*.json.bak
+build.log
