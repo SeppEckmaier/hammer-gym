@@ -29,7 +29,7 @@ public:
     explicit HammerGym(QObject *parent = nullptr);
 
     QString currentDay() const;
-    void setCurrentDay(const QString &day);
+    Q_INVOKABLE void setCurrentDay(const QString &day);
     QStringList dayNames() const;
     QVariantList dayInfo() const;
     QVariantList exercises() const;

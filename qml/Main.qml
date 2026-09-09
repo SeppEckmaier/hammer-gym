@@ -63,23 +63,26 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 spacing: 0
                 Label {
-                    text: "ᚠ ᚢ ᚦ ᚨ ᚱ ᚲ ᚷ ᚹ ᚺ ᚾ ᛁ ᛃ ᛇ ᛈ ᛉ ᛊ ᛏ ᛒ ᛖ ᛗ ᛚ ᛜ ᛞ ᛟ"
+                    text: "ᚺ ᚨ ᛗ ᛗ ᛖ ᚱ ᚷ ᚤ ᛗ"
                     color: root.gold
                     font.pixelSize: 11
-                    Layout.alignment: Qt.AlignHCenter
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
                 }
                 Label {
                     text: "ᚺ  Hammer-Gym  ᚺ"
                     color: root.gold
                     font.pixelSize: 20
                     font.bold: true
-                    Layout.alignment: Qt.AlignHCenter
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
                 }
                 Label {
                     text: "⚡  Kraft · Ausdauer · Wille  ⚡"
                     color: root.dim
                     font.pixelSize: 11
-                    Layout.alignment: Qt.AlignHCenter
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
                 }
             }
 
@@ -145,7 +148,6 @@ ApplicationWindow {
     // ---------- Inhalt ----------
     ColumnLayout {
         anchors.fill: parent
-        anchors.topMargin: root.header.height
         spacing: 0
 
         // Wochentage
