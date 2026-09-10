@@ -24,7 +24,7 @@ Rectangle {
 
         Label {
             text: "Übung bearbeiten"
-            color: "#d4a843"
+            color: "#FF8800"
             font.pixelSize: 16
             font.bold: true
             Layout.alignment: Qt.AlignHCenter

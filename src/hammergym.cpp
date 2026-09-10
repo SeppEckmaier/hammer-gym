@@ -111,7 +111,11 @@ QString HammerGym::dataFilePath() const
 
 QString HammerGym::icsDir() const
 {
-    QString dir = dataDir() + QStringLiteral("/documents");
+    // Sichtbar für den Nutzer (Punkt 9): ~/Documents/hammer-gym
+    QString dir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    if (dir.isEmpty())
+        dir = QDir::homePath() + QStringLiteral("/Documents");
+    dir += QStringLiteral("/hammer-gym");
     QDir().mkpath(dir);
     return dir;
 }
@@ -681,6 +685,45 @@ void HammerGym::moveExercise(int exIdx, int direction)
     recompute();
 }
 
+void HammerGym::reorderExercise(int fromIdx, int toIdx)
+{
+    QVariantList list = m_plan.value(m_currentDay).toList();
+    if (fromIdx < 0 || fromIdx >= list.size() || toIdx < 0 || toIdx >= list.size())
+        return;
+    if (fromIdx == toIdx) return;
+    pushUndo();
+
+    // Entfernen + an Zielposition einfügen (End-Index == toIdx)
+    const QVariant ex = list.takeAt(fromIdx);
+    list.insert(toIdx, ex);
+    m_plan.insert(m_currentDay, list);
+
+    // Progress-Keys der neuen Reihenfolge folgen lassen
+    QVariantMap dayProg = m_progress.value(m_currentDay).toMap();
+    QVariantMap newProg;
+    for (QVariantMap::const_iterator it = dayProg.constBegin(); it != dayProg.constEnd(); ++it) {
+        const QString key = it.key();
+        const int underscore = key.indexOf(QLatin1Char('_'));
+        const QString prefix = underscore < 0 ? key : key.left(underscore);
+        const QString suffix = underscore < 0 ? QString() : key.mid(underscore);
+        bool ok = false;
+        const int ki = prefix.toInt(&ok);
+        if (!ok) { newProg.insert(key, it.value()); continue; }
+
+        int newK;
+        if (ki == fromIdx) {
+            newK = toIdx;
+        } else {
+            const int p = ki > fromIdx ? ki - 1 : ki;   // Position nach dem Entfernen
+            newK = p >= toIdx ? p + 1 : p;              // Einfügen verschiebt >= toIdx um +1
+        }
+        newProg.insert(QString::number(newK) + suffix, it.value());
+    }
+    m_progress.insert(m_currentDay, newProg);
+    save();
+    recompute();
+}
+
 // ---------------------------------------------------------------- Übung anlegen/bearbeiten
 
 void HammerGym::addExercise(const QString &name, int sets, int reps,
@@ -829,15 +872,22 @@ void HammerGym::clearPauseInternal(const QString &day)
     m_pauses.remove(day);
 }
 
-// ---------------------------------------------------------------- ICS-Export
+// ---------------------------------------------------------------- ICS-Export / System-Kalender
 
-QString HammerGym::exportIcs()
+QString HammerGym::systemCalendarPath() const
 {
-    const QString day = m_currentDay;
-    const bool pause = pausedToday();
+    return QDir::homePath() + QStringLiteral("/.local/share/evolution/calendar/system/calendar.ics");
+}
 
-    // Nach einem abgeschlossenen Training liegen Plan/Progress noch im
-    // "m_completed*"-Puffer (der reguläre Progress wurde bereits geleert).
+QString HammerGym::systemCalendarFile() const
+{
+    return systemCalendarPath();
+}
+
+void HammerGym::collectEvent(const QString &day, bool pause, QString &summary,
+                             QString &description, QString &dateStr, QString &dtendStr,
+                             QString &dtStr) const
+{
     QVariantList exercises = m_plan.value(day).toList();
     QVariantMap dayProg = m_progress.value(day).toMap();
     if (m_completedDay == day && !m_completedPlan.isEmpty()) {
@@ -846,12 +896,12 @@ QString HammerGym::exportIcs()
     }
 
     const QDateTime now = QDateTime::currentDateTime();
-    const QString dtStr = now.toString(QStringLiteral("yyyyMMddThhmmss"));
-    const QString dateStr = now.date().toString(QStringLiteral("yyyyMMdd"));
-    const QString dtendStr = now.date().addDays(1).toString(QStringLiteral("yyyyMMdd"));
+    dtStr = now.toString(QStringLiteral("yyyyMMddThhmmss"));
+    dateStr = now.date().toString(QStringLiteral("yyyyMMdd"));
+    dtendStr = now.date().addDays(1).toString(QStringLiteral("yyyyMMdd"));
 
-    QString summary;
-    QString description;
+    summary.clear();
+    description.clear();
 
     if (pause) {
         summary = QStringLiteral("Hammer-Gym — %1 🛌 Ruhetag").arg(day);
@@ -894,11 +944,13 @@ QString HammerGym::exportIcs()
         }
         summary = QStringLiteral("Hammer-Gym — %1 ✅").arg(day);
     }
+}
 
-    // UID basierend auf Zeitstempel
-    const QString uid = QStringLiteral("%1@hammer-gym")
-        .arg(now.toString(QStringLiteral("yyyyMMddThhmmsszzz")));
-
+QString HammerGym::writeStandaloneIcs(const QString &day, const QString &uid,
+                                      const QString &dateStr, const QString &dtendStr,
+                                      const QString &dtStr, const QString &summary,
+                                      const QString &description)
+{
     QString content;
     content += QStringLiteral("BEGIN:VCALENDAR\r\n");
     content += QStringLiteral("VERSION:2.0\r\n");
@@ -914,7 +966,7 @@ QString HammerGym::exportIcs()
     content += QStringLiteral("END:VCALENDAR\r\n");
 
     const QString filename = QStringLiteral("hammer_gym_%1_%2.ics")
-        .arg(day, now.date().toString(QStringLiteral("yyyyMMdd")));
+        .arg(day, dateStr);
     const QString filepath = icsDir() + QLatin1Char('/') + filename;
 
     QFile out(filepath);
@@ -924,17 +976,120 @@ QString HammerGym::exportIcs()
     }
     out.write(content.toUtf8());
     out.close();
+    return filepath;
+}
 
-    // Verbrauchter Completed-Puffer wird geleert
+void HammerGym::consumeCompleted(const QString &day)
+{
     if (m_completedDay == day) {
         m_completedDay.clear();
         m_completedPlan.clear();
         m_completedProgress.clear();
     }
+}
 
+QString HammerGym::exportIcs()
+{
+    const QString day = m_currentDay;
+    const bool pause = pausedToday();
+    QString summary, description, dateStr, dtendStr, dtStr;
+    collectEvent(day, pause, summary, description, dateStr, dtendStr, dtStr);
+
+    const QDateTime now = QDateTime::currentDateTime();
+    const QString uid = QStringLiteral("%1@hammer-gym")
+        .arg(now.toString(QStringLiteral("yyyyMMddThhmmsszzz")));
+
+    const QString filepath = writeStandaloneIcs(day, uid, dateStr, dtendStr, dtStr,
+                                                summary, description);
+    if (filepath.isEmpty())
+        return QString();
+
+    consumeCompleted(day);
     emit message(QStringLiteral("Kalender-Export"),
                  QStringLiteral("ICS-Datei gespeichert:\n%1").arg(filepath));
     return filepath;
+}
+
+QString HammerGym::addToSystemCalendar()
+{
+    const QString day = m_currentDay;
+    const bool pause = pausedToday();
+    QString summary, description, dateStr, dtendStr, dtStr;
+    collectEvent(day, pause, summary, description, dateStr, dtendStr, dtStr);
+
+    // Fester UID pro Tag -> doppeltes Exportieren legt keinen zweiten Termin an.
+    const QString calUid = QStringLiteral("hammer-gym-%1@hammer-gym").arg(dateStr);
+    const QString path = systemCalendarPath();
+
+    QByteArray data;
+    QFile in(path);
+    if (in.exists()) {
+        if (!in.open(QIODevice::ReadOnly)) {
+            emit message(QStringLiteral("Kalender"),
+                         QStringLiteral("System-Kalender konnte nicht gelesen werden:\n%1").arg(path));
+            return QString();
+        }
+        data = in.readAll();
+        in.close();
+        if (data.contains(calUid.toUtf8())) {
+            emit message(QStringLiteral("Kalender"),
+                         QStringLiteral("Ein Eintrag für %1 ist bereits im Kalender vorhanden.").arg(day));
+            return path;
+        }
+    }
+
+    QString vevent;
+    vevent += QStringLiteral("BEGIN:VEVENT\r\n");
+    vevent += QStringLiteral("UID:%1\r\n").arg(calUid);
+    vevent += QStringLiteral("DTSTAMP:%1\r\n").arg(dtStr);
+    vevent += QStringLiteral("DTSTART;VALUE=DATE:%1\r\n").arg(dateStr);
+    vevent += QStringLiteral("DTEND;VALUE=DATE:%1\r\n").arg(dtendStr);
+    vevent += QStringLiteral("SUMMARY:%1\r\n").arg(summary);
+    vevent += QStringLiteral("DESCRIPTION:%1\r\n").arg(description);
+    vevent += QStringLiteral("X-EVOLUTION-SEND-CALENDAR:TRUE\r\n");
+    vevent += QStringLiteral("STATUS:CONFIRMED\r\n");
+    vevent += QStringLiteral("TRANSP:TRANSPARENT\r\n");
+    vevent += QStringLiteral("END:VEVENT\r\n");
+
+    QByteArray content;
+    if (data.isEmpty()) {
+        QByteArray header;
+        header += "BEGIN:VCALENDAR\r\n";
+        header += "VERSION:2.0\r\n";
+        header += "PRODID:-//Hammer-Gym//DE\r\n";
+        content = header + vevent.toUtf8() + "END:VCALENDAR\r\n";
+    } else {
+        const int idx = data.lastIndexOf("END:VCALENDAR");
+        if (idx < 0) {
+            emit message(QStringLiteral("Kalender"),
+                         QStringLiteral("System-Kalender ist ungültig:\n%1").arg(path));
+            return QString();
+        }
+        QByteArray head = data.left(idx);
+        if (!head.endsWith('\n'))
+            head += '\n';
+        content = head + vevent.toUtf8() + data.mid(idx);
+    }
+
+    QFile out(path);
+    if (!out.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        emit message(QStringLiteral("Kalender"),
+                     QStringLiteral("System-Kalender konnte nicht geschrieben werden:\n%1").arg(path));
+        return QString();
+    }
+    out.write(content);
+    out.close();
+
+    const QString backup = writeStandaloneIcs(day, calUid, dateStr, dtendStr, dtStr,
+                                              summary, description);
+
+    consumeCompleted(day);
+
+    QString msg = QStringLiteral("Training wurde in den System-Kalender eingetragen.\nDer Kalender zeigt ihn automatisch an.");
+    if (!backup.isEmpty())
+        msg += QStringLiteral("\n\nBackup-ICS:\n%1").arg(backup);
+    emit message(QStringLiteral("Kalender-Eintrag"), msg);
+    return path;
 }
 
 QStringList HammerGym::bandOptions() const { return BAND_OPTS; }

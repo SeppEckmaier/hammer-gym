@@ -23,10 +23,11 @@ RowLayout {
         model: gym.bandOptions
         Layout.fillWidth: true
         font.pixelSize: 13
-        Component.onCompleted: {
-            var i = indexOfValue(bandRow.bandDefault)
+        function applyBand(band) {
+            var i = indexOfValue(band)
             combo.currentIndex = i >= 0 ? i : 0
         }
+        Component.onCompleted: combo.applyBand(bandRow.bandDefault)
         background: Rectangle {
             color: "#2f2f3f"
             radius: 4
@@ -48,4 +49,7 @@ RowLayout {
             anchors.rightMargin: 8
         }
     }
+
+    // Reagiert auf spätere Band-Vorgaben (z. B. beim Öffnen des Edit-Formulars)
+    onBandDefaultChanged: combo.applyBand(bandRow.bandDefault)
 }

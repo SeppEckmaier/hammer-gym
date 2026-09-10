@@ -54,6 +54,7 @@ public:
     Q_INVOKABLE void removeSet(int exIdx);
     Q_INVOKABLE void deleteExercise(int exIdx);
     Q_INVOKABLE void moveExercise(int exIdx, int direction); // direction -1/1
+    Q_INVOKABLE void reorderExercise(int fromIdx, int toIdx); // per Drag&Drop
     Q_INVOKABLE void addExercise(const QString &name, int sets, int reps,
                                  const QString &band, const QString &notiz);
     Q_INVOKABLE void saveEdit(int exIdx, const QString &name, int sets, int reps,
@@ -65,6 +66,8 @@ public:
     Q_INVOKABLE void clearPause();
     Q_INVOKABLE void undo();
     Q_INVOKABLE QString exportIcs();    // liefert Pfad oder Leerstring
+    Q_INVOKABLE QString addToSystemCalendar();    // Training/Ruhetag in System-Kalender
+    Q_INVOKABLE QString systemCalendarFile() const;    // Pfad des System-Kalenders
 
     Q_INVOKABLE QString todayString() const;
     Q_INVOKABLE QString dateLabel(const QString &day) const;
@@ -99,6 +102,15 @@ private:
     QString dataDir() const;
     QString dataFilePath() const;
     QString icsDir() const;
+    QString systemCalendarPath() const;
+    void collectEvent(const QString &day, bool pause, QString &summary,
+                      QString &description, QString &dateStr, QString &dtendStr,
+                      QString &dtStr) const;
+    QString writeStandaloneIcs(const QString &day, const QString &uid,
+                               const QString &dateStr, const QString &dtendStr,
+                               const QString &dtStr, const QString &summary,
+                               const QString &description);
+    void consumeCompleted(const QString &day);
 
     QString m_currentDay;
     QVariantMap m_plan;       // Tag -> Liste von Übungen

@@ -19,9 +19,8 @@ ApplicationWindow {
 
     property color bg: "#1e1e2e"
     property color bg2: "#2a2a3a"
-    property color gold: "#d4a843"
+    property color accent: "#FF8800"
     property color dim: "#aaaaaa"
-    property color accent: "#d4a843"
     property color accentText: "#1e1e2e"
 
     // Höhe der Bildschirmtastatur (0 = ausgeblendet)
@@ -78,6 +77,16 @@ ApplicationWindow {
     function openAdd()       { addMode = true; editIndex = -1 }
     function cancelAdd()     { addMode = false }
 
+    function showMsg(title, body) {
+        msgTitleL.text = title
+        msgBodyL.text = body
+        messagePopup.open()
+    }
+
+    function addTrainingToCalendar() {
+        gym.addToSystemCalendar()
+    }
+
     function askDelete(idx, name) {
         pendingDeleteIdx = idx
         pendingDeleteName = name
@@ -97,6 +106,108 @@ ApplicationWindow {
         gym.removeSet(idx)
     }
 
+    // ---------- Fokus-Vollbild (Punkt 10) ----------
+    property int focusIdx: -1
+    property bool _daySwipe: false
+    function openFocus(idx)  { if (idx >= 0) focusIdx = idx }
+    function closeFocus()    { focusIdx = -1 }
+
+    // ---------- Drag&Drop-Sortierung (Punkt 7) ----------
+    property int mvFrom: -1
+    property int mvTarget: -1
+    property var mvCenters: []
+    property real mvDragStartY: 0
+    property real mvFingerStartY: 0
+
+    function itemAtIdx(idx) {
+        for (var i = 0; i < exRepeater.count; ++i) {
+            var d = exRepeater.itemAt(i)
+            if (d && d.exIdx2 === idx)
+                return d
+        }
+        return null
+    }
+
+    function allDelegates() {
+        var a = []
+        for (var i = 0; i < exRepeater.count; ++i) {
+            var d = exRepeater.itemAt(i)
+            if (d) a.push(d)
+        }
+        return a
+    }
+
+    function beginMoveDrag(idx) {
+        if (root.addMode || root.editIndex >= 0 || focusIdx >= 0) return
+        mvFrom = idx
+        mvTarget = idx
+        mvCenters = []
+        var kids = allDelegates()
+        for (var i = 0; i < kids.length; ++i) {
+            var it = kids[i]
+            mvCenters.push({ idx: it.exIdx2,
+                             cy: it.mapToItem(exListFlick, 0, it.height / 2).y + 5 })
+        }
+        var cur = itemAtIdx(idx)
+        if (!cur) return
+        mvDragStartY = cur.mapToItem(exListFlick, 0, 0).y + 5
+        mvFingerStartY = cur.mapToItem(exListFlick, 0, 0).y + 5
+        exListFlick.interactive = false
+    }
+
+    function updateMoveDrag(idx, yLocal) {
+        if (mvFrom < 0) return
+        var it = itemAtIdx(idx)
+        var card = it ? it.cardItem : null
+        if (!it || !card) return
+
+        // Bewegung des Fingers (in Listen-/Ansichtkoordinaten)
+        var fingerY = card.mapToItem(exListFlick, 0, yLocal).y + 5
+        var dy = fingerY - mvFingerStartY
+
+        // Karte folgt dem Finger (ohne das Layout umzubauen)
+        it.dragTranslate.y = dy
+
+        // Drop-Ziel: andere Karten, deren Mittelpunkt unter dem Finger liegt
+        var curCenter = mvDragStartY + it.height / 2 + dy
+        var t = 0
+        for (var i = 0; i < mvCenters.length; ++i)
+            if (mvCenters[i].idx !== idx && mvCenters[i].cy < curCenter)
+                t++
+        mvTarget = Math.max(0, Math.min(t, mvCenters.length - 1))
+    }
+
+    function endMoveDrag(idx) {
+        if (mvFrom < 0) return
+        var it = itemAtIdx(idx)
+        if (it) it.dragTranslate.y = 0
+        if (mvTarget >= 0 && mvTarget !== mvFrom)
+            gym.reorderExercise(mvFrom, mvTarget)
+        mvFrom = -1
+        mvTarget = -1
+        mvCenters = []
+        exListFlick.interactive = true
+    }
+
+    // ---------- Wochentag per Wischgeste (Punkt 3) ----------
+    function switchDayBy(dir) {
+        var info = gym.dayInfo
+        var cur = -1
+        for (var i = 0; i < info.length; ++i)
+            if (info[i].name === gym.currentDay) { cur = i; break }
+        if (cur < 0) return
+        var next = (cur + dir + info.length) % info.length
+        if (info[next])
+            gym.setCurrentDay(info[next].name)
+    }
+
+    // Gemeinsame Wischlogik für die DragHandler (schwelle 60px)
+    function handleDaySwipe(tx) {
+        if (Math.abs(tx) < 60) return
+        // links wischen → nächster Tag, rechts wischen → vorheriger Tag
+        root.switchDayBy(tx < 0 ? 1 : -1)
+    }
+
     // ---------- Header ----------
     header: ToolBar {
         background: Rectangle { color: "#2b2b3b" }
@@ -113,14 +224,14 @@ ApplicationWindow {
                 spacing: 0
                 Label {
                     text: "ᚺ ᚨ ᛗ ᛗ ᛖ ᚱ ᚷ ᚤ ᛗ"
-                    color: root.gold
+                    color: root.accent
                     font.pixelSize: 11
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignHCenter
                 }
                 Label {
                     text: "ᚺ  Hammer-Gym  ᚺ"
-                    color: root.gold
+                    color: root.accent
                     font.pixelSize: 20
                     font.bold: true
                     Layout.fillWidth: true
@@ -140,7 +251,7 @@ ApplicationWindow {
                 Layout.leftMargin: 20
                 Layout.rightMargin: 20
                 height: 1
-                color: root.gold
+                color: root.accent
             }
 
             RowLayout {
@@ -149,7 +260,7 @@ ApplicationWindow {
 
                 Label {
                     text: gym.stopwatchText
-                    color: root.gold
+                    color: root.accent
                     font.pixelSize: 22
                     font.bold: true
                     Layout.fillWidth: true
@@ -217,7 +328,7 @@ ApplicationWindow {
                     padding: 0
                     onClicked: gym.setCurrentDay(modelData.name)
                     background: Rectangle {
-                        color: modelData.active ? "#d4a843"
+                        color: modelData.active ? root.accent
                               : (modelData.today ? "#3B8ED0" : "#2f2f3f")
                         radius: 4
                     }
@@ -239,6 +350,21 @@ ApplicationWindow {
                     }
                 }
             }
+
+            // Wischen auf der Wochentag-Zeile wechselt den Tag
+            DragHandler {
+                id: dayRowSwipe
+                target: null
+                yAxis.enabled: false
+                onActiveChanged: if (active) root._daySwipe = false
+                onTranslationChanged: {
+                    if (!active || root._daySwipe) return
+                    if (Math.abs(translation.x) > 60) {
+                        root._daySwipe = true
+                        root.handleDaySwipe(translation.x)
+                    }
+                }
+            }
         }
 
         // Fortschritt
@@ -251,7 +377,7 @@ ApplicationWindow {
 
             Label {
                 text: gym.progressDone + "/" + gym.progressTotal
-                color: root.gold
+                color: root.accent
                 font.pixelSize: 13
                 font.bold: true
             }
@@ -264,7 +390,7 @@ ApplicationWindow {
                 background: Rectangle { radius: 7; color: "#2a2a3a" }
                 contentItem: Rectangle {
                     radius: 7
-                    color: "#d4a843"
+                    color: root.accent
                     width: prog.visualPosition * parent.width
                     anchors.verticalCenter: parent.verticalCenter
                 }
@@ -273,50 +399,56 @@ ApplicationWindow {
 
         // Aktions-Buttons
         Row {
-            Layout.fillWidth: true
-            Layout.leftMargin: 6
-            Layout.rightMargin: 6
+            Layout.alignment: Qt.AlignHCenter
             Layout.topMargin: 6
             spacing: 4
 
             Repeater {
                 model: [
-                    { label: "Neu",      emoji: "➕", cmd: "add" },
-                    { label: "Undo",     emoji: "↩", cmd: "undo" },
-                    { label: "Pause",    emoji: "🛌", cmd: "pause" },
-                    { label: "Tag",      emoji: "📆", cmd: "move" },
-                    { label: "Export",   emoji: "📅", cmd: "export" }
+                    { label: "Neu",      emoji: "+", cmd: "add",    acc: true,  pref: 52, big: true },
+                    { label: "Rückgängig", emoji: "↩", cmd: "undo",  acc: true,  pref: 92 },
+                    { label: "Pause",    emoji: "🛌", cmd: "pause",  acc: false, pref: 52 },
+                    { label: "Tag",      emoji: "⇄", cmd: "move",   acc: true,  pref: 52 },
+                    { label: "Export",   emoji: "📅", cmd: "export", acc: false, pref: 52 }
                 ]
                 Button {
                     id: actBtn
-                    width: (parent.width - 12) / 5 - 4
+                    width: modelData.pref
                     height: 46
                     padding: 0
+                    leftPadding: 0
+                    rightPadding: 0
                     onClicked: {
                         switch (modelData.cmd) {
                         case "add":    root.openAdd(); break
                         case "undo":   gym.undo(); break
                         case "pause":  root.onPauseClicked(); break
                         case "move":   root.onMoveClicked(); break
-                        case "export": gym.exportIcs(); break
+                        case "export": root.addTrainingToCalendar(); break
                         }
                     }
                     background: Rectangle {
-                        radius: 4
-                        color: (modelData.cmd === "pause" && gym.pausedToday) ? "#5a2a5a" : "#33334a"
+                        radius: 6
+                        color: (modelData.cmd === "pause" && gym.pausedToday) ? "#5a2a5a" : "#3a3a52"
+                        border.color: (modelData.cmd === "move") ? root.accent : "#55557a"
+                        border.width: modelData.cmd === "move" ? 1 : 0
                     }
                     contentItem: ColumnLayout {
                         spacing: 1
                         Text {
                             text: modelData.emoji
-                            font.pixelSize: 15
+                            color: modelData.acc ? root.accent : "#dddddd"
+                            font.pixelSize: modelData.big ? 18 : 16
+                            font.bold: modelData.big === true
                             Layout.alignment: Qt.AlignHCenter
                         }
                         Text {
                             text: modelData.label
                             color: (modelData.cmd === "pause" && gym.pausedToday) ? "#ffd0d0" : "#cccccc"
-                            font.pixelSize: 10
-                            Layout.alignment: Qt.AlignHCenter
+                            font.pixelSize: 9
+                            Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignHCenter
+                            elide: Text.ElideRight
                         }
                     }
                 }
@@ -351,12 +483,16 @@ ApplicationWindow {
                         height: Math.max(28, vbar.size * (vbar.height - 24))
                         y: vbar.position * (vbar.height - height)
                         radius: 3
-                        color: vbar.active ? "#d4a843" : "#666688"
+                        color: vbar.active ? root.accent : "#666688"
                         opacity: 0.75
                     }
                 }
                 background: Item { }
             }
+
+            // Hinweis: Wischen zum Tageswechsel läuft über der Wochentag-Zeile
+            // (dayRowSwipe weiter oben) – NICHT in der Liste, damit das vertikale
+            // Scrollen auf allen Qt-Versionen ungestört bleibt.
 
             Column {
                 id: listCol
@@ -377,7 +513,7 @@ ApplicationWindow {
                         spacing: 8
                         Label {
                             text: "🛌  Ruhetag"
-                            color: root.gold
+                            color: root.accent
                             font.pixelSize: 22
                             font.bold: true
                             Layout.alignment: Qt.AlignHCenter
@@ -404,6 +540,7 @@ ApplicationWindow {
 
                 // ----- Übungen -----
                 Repeater {
+                    id: exRepeater
                     model: gym.exercises
 
                     Item {
@@ -411,6 +548,9 @@ ApplicationWindow {
                         width: parent.width
                         height: Math.max(cardLoader.height, editLoader.height)
                         readonly property bool editing: root.editIndex === modelData.idx
+                        property int exIdx2: modelData.idx
+                        property alias cardItem: cardLoader.item
+                        transform: Translate { id: dragTranslate; y: 0 }
 
                         Loader {
                             id: cardLoader
@@ -419,16 +559,18 @@ ApplicationWindow {
                             active: !exItem.editing
                             sourceComponent: exerciseCardComp
                             onLoaded: {
-                                cardLoader.item.exData = modelData
-                                cardLoader.item.exIndex = modelData.idx
-                                cardLoader.item.canMoveUp = modelData.idx > 0
-                                cardLoader.item.canMoveDown = modelData.idx < gym.exercises.length - 1
+                                // Reaktiv statt einmalig: Karte folgt dem Modell immer aktuell
+                                cardLoader.item.exData = Qt.binding(function() { return modelData })
+                                cardLoader.item.exIndex = Qt.binding(function() { return modelData.idx })
                                 cardLoader.item.editRequested.connect(root.startEdit)
                                 cardLoader.item.deleteRequested.connect(root.askDelete)
-                                cardLoader.item.moveRequested.connect(gym.moveExercise)
                                 cardLoader.item.addSetRequested.connect(gym.addSet)
                                 cardLoader.item.removeSetRequested.connect(root.askRemoveSet)
                                 cardLoader.item.saveSetRequested.connect(gym.saveSet)
+                                cardLoader.item.focusRequested.connect(root.openFocus)
+                                cardLoader.item.moveDragStart.connect(root.beginMoveDrag)
+                                cardLoader.item.moveDragMove.connect(root.updateMoveDrag)
+                                cardLoader.item.moveDragEnd.connect(root.endMoveDrag)
                             }
                         }
 
@@ -439,7 +581,7 @@ ApplicationWindow {
                             active: exItem.editing
                             sourceComponent: editCardComp
                             onLoaded: {
-                                editLoader.item.exData = modelData
+                                editLoader.item.exData = Qt.binding(function() { return modelData })
                                 editLoader.item.saveRequested.connect(gym.saveEdit)
                                 editLoader.item.cancelRequested.connect(root.cancelEdit)
                                 root.hookFieldScrolling(editLoader.item)
@@ -470,6 +612,38 @@ ApplicationWindow {
     Component { id: exerciseCardComp; ExerciseCard {} }
     Component { id: editCardComp;     EditCard {} }
     Component { id: addCardComp;      AddCard {} }
+    Component { id: focusCardComp;    FocusCard {} }
+
+    // ============================
+    // Fokus-Vollbild (Punkt 10)
+    // ============================
+    Item {
+        id: focusWrap
+        anchors.fill: parent
+        anchors.bottomMargin: root.imHeight
+        visible: root.focusIdx >= 0
+        z: 60
+
+        Rectangle {
+            anchors.fill: parent
+            color: "#1e1e2e"
+        }
+        Loader {
+            id: focusLoader
+            anchors.fill: parent
+            active: parent.visible
+            sourceComponent: focusCardComp
+            onLoaded: {
+                focusLoader.item.exData = Qt.binding(function() {
+                    return (root.focusIdx >= 0) ? gym.exercises[root.focusIdx] : null
+                })
+                focusLoader.item.saveSetRequested.connect(gym.saveSet)
+                focusLoader.item.addSetRequested.connect(gym.addSet)
+                focusLoader.item.removeSetRequested.connect(gym.removeSet)
+                focusLoader.item.closeRequested.connect(root.closeFocus)
+            }
+        }
+    }
 
     // ============================
     // Aktions-Helfer
@@ -507,7 +681,7 @@ ApplicationWindow {
                 id: msgTitleL
                 Layout.fillWidth: true
                 text: ""
-                color: root.gold
+                color: root.accent
                 font.pixelSize: 16
                 font.bold: true
                 wrapMode: Text.Wrap
@@ -549,7 +723,7 @@ ApplicationWindow {
             Label {
                 Layout.fillWidth: true
                 text: "Löschen"
-                color: root.gold
+                color: root.accent
                 font.pixelSize: 16
                 font.bold: true
             }
@@ -603,7 +777,7 @@ ApplicationWindow {
             Label {
                 Layout.fillWidth: true
                 text: "Satz entfernen"
-                color: root.gold
+                color: root.accent
                 font.pixelSize: 16
                 font.bold: true
             }
@@ -657,7 +831,7 @@ ApplicationWindow {
             Label {
                 Layout.fillWidth: true
                 text: "Geschafft!"
-                color: root.gold
+                color: root.accent
                 font.pixelSize: 18
                 font.bold: true
             }
@@ -682,7 +856,7 @@ ApplicationWindow {
                     id: expYesBtn
                     text: "📅 Exportieren"
                     onClicked: {
-                        gym.exportIcs()
+                        root.addTrainingToCalendar()
                         completedPopup.close()
                     }
                     background: Rectangle { color: "#2a5a2a"; radius: 4 }
@@ -720,7 +894,7 @@ ApplicationWindow {
             Label {
                 Layout.fillWidth: true
                 text: "🛌  Trainingspause"
-                color: root.gold
+                color: root.accent
                 font.pixelSize: 16
                 font.bold: true
             }
@@ -751,7 +925,7 @@ ApplicationWindow {
                     text: "Ruhetag eintragen"
                     onClicked: {
                         gym.setPause(pauseNotizF.text)
-                        gym.exportIcs()   // Ruhetag als Kalender-Eintrag (wie im Original)
+                        gym.addToSystemCalendar()   // Ruhetag in den System-Kalender
                         pausePopup.close()
                     }
                     background: Rectangle { color: "#5a2a5a"; radius: 4 }
@@ -792,7 +966,7 @@ ApplicationWindow {
             Label {
                 Layout.fillWidth: true
                 text: "📆  Tag verschieben"
-                color: root.gold
+                color: root.accent
                 font.pixelSize: 16
                 font.bold: true
             }
@@ -809,6 +983,48 @@ ApplicationWindow {
                 model: movePopup.targetOptions
                 font.pixelSize: 14
                 onCurrentIndexChanged: movePopup.updateMergeVisibility()
+                background: Rectangle { color: "#2f2f3f"; radius: 4; border.color: "#555555" }
+                contentItem: Text {
+                    text: moveCb.currentText
+                    color: "#ffffff"
+                    font.pixelSize: 14
+                    verticalAlignment: Text.AlignVCenter
+                    horizontalAlignment: Text.AlignLeft
+                    leftPadding: 8
+                }
+                indicator: Text {
+                    text: "▾"
+                    color: "#ffffff"
+                    font.pixelSize: 14
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.right: parent.right
+                    anchors.rightMargin: 10
+                }
+                popup: Popup {
+                    y: moveCb.height + 2
+                    width: moveCb.width
+                    padding: 6
+                    background: Rectangle { color: "#2b2b3b"; radius: 6; border.color: "#555555" }
+                    contentItem: ListView {
+                        clip: true
+                        implicitHeight: movePopup.targetOptions.length * 44 + 12
+                        model: movePopup.targetOptions
+                        currentIndex: moveCb.currentIndex
+                        highlightMoveDuration: 0
+                        highlight: Rectangle { color: "#44445a"; radius: 4 }
+                        delegate: ItemDelegate {
+                            width: moveCb.width - 12
+                            height: 44
+                            text: modelData
+                            font.pixelSize: 14
+                            highlighted: ListView.isCurrentItem
+                            onClicked: {
+                                moveCb.currentIndex = index
+                                movePopup.close()
+                            }
+                        }
+                    }
+                }
             }
             CheckBox {
                 id: mergeCb
@@ -819,7 +1035,7 @@ ApplicationWindow {
                     implicitWidth: 18
                     implicitHeight: 18
                     radius: 4
-                    color: mergeCb.checked ? "#d4a843" : "#222233"
+                    color: mergeCb.checked ? root.accent : "#222233"
                     border.color: "#888888"
                     Rectangle {
                         visible: mergeCb.checked

@@ -2,20 +2,22 @@ import QtQuick 2.12
 import QtQuick.Controls 2.12
 import QtQuick.Layouts 1.12
 
-// Normale Übungskarte (Eingabe eines Satzes, Reorder, Delete, Edit)
+// Normale Übungskarte: Satz-Eingabe, Fokus-Ansicht (Tipp auf den Kopf),
+// Verschieben per Langdruck (Kopf), Delete, Edit
 Rectangle {
     id: card
     property var exData
     property int exIndex: 0
-    property bool canMoveUp: false
-    property bool canMoveDown: false
 
     signal editRequested(int idx)
     signal deleteRequested(int idx, string name)
-    signal moveRequested(int idx, int direction)
     signal addSetRequested(int idx)
     signal removeSetRequested(int idx)
     signal saveSetRequested(int exIdx, int setIdx, bool checked, int reps, string puls)
+    signal focusRequested(int idx)                      // Tipp auf den Kopf → Vollbild
+    signal moveDragStart(int idx)
+    signal moveDragMove(int idx, real yLocal)
+    signal moveDragEnd(int idx)
 
     width: parent.width - 8
     anchors.horizontalCenter: parent.horizontalCenter
@@ -27,70 +29,99 @@ Rectangle {
         id: col
         width: parent.width - 8
         anchors.horizontalCenter: parent.horizontalCenter
-        anchors.top: parent.top
-        anchors.topMargin: 5
+        y: 5
         spacing: 2
 
-        // Kopfzeile
-        RowLayout {
-            id: head
+        // Kopfzone: Kopfzeile (Antippen = Fokus, langes Drücken = verschieben)
+        Rectangle {
+            id: headZone
             width: parent.width
             height: 32
-            spacing: 6
+            color: "transparent"
 
-            Rectangle {
-                width: 14
-                height: 14
-                radius: 3
-                color: exData.color
-                Layout.alignment: Qt.AlignVCenter
-            }
-            Label {
-                text: exData.name
-                color: "#ffffff"
-                font.pixelSize: 15
-                font.bold: true
-                elide: Text.ElideRight
-                Layout.fillWidth: true
-                Layout.alignment: Qt.AlignVCenter
-            }
-            Label {
-                text: exData.notiz
-                color: "#aaaaaa"
-                font.pixelSize: 11
-                elide: Text.ElideRight
-                Layout.preferredWidth: 70
-                Layout.alignment: Qt.AlignVCenter
-            }
-            Row {
-                spacing: 2
-                Layout.alignment: Qt.AlignVCenter
+            RowLayout {
+                id: head
+                width: parent.width
+                height: parent.height
+                spacing: 6
 
-                BaseButton {
-                    text: "X"
-                    bWidth: 26
-                    btnColor: "#5a2a2a"
-                    onClicked: card.deleteRequested(exIndex, exData.name)
+                Rectangle {
+                    width: 14
+                    height: 14
+                    radius: 3
+                    color: exData.color
+                    Layout.alignment: Qt.AlignVCenter
                 }
-                BaseButton {
-                    text: "Edit"
-                    bWidth: 36
-                    btnColor: "#3a3a2a"
-                    onClicked: card.editRequested(exIndex)
+                Label {
+                    text: exData.name
+                    color: "#ffffff"
+                    font.pixelSize: 15
+                    font.bold: true
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignVCenter
                 }
-                BaseButton {
-                    text: "↑"
-                    bWidth: 28
-                    btnColor: "#2a3a5a"
-                    visible: card.canMoveUp
-                    onClicked: card.moveRequested(exIndex, -1)
+                Label {
+                    text: exData.notiz
+                    color: "#aaaaaa"
+                    font.pixelSize: 11
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignVCenter
                 }
-                BaseButton {
-                    text: "↓"
-                    bWidth: 28
-                    btnColor: "#2a3a5a"
-                    visible: card.canMoveDown
-                    onClicked: card.moveRequested(exIndex, 1)
+                Row {
+                    id: headBtns
+                    spacing: 2
+                    Layout.alignment: Qt.AlignVCenter
+
+                    BaseButton {
+                        text: "X"
+                        bWidth: 26
+                        btnColor: "#5a2a2a"
+                        onClicked: card.deleteRequested(exIndex, exData.name)
+                    }
+                    BaseButton {
+                        text: "Edit"
+                        bWidth: 36
+                        btnColor: "#3a3a2a"
+                        onClicked: card.editRequested(exIndex)
+                    }
+                }
+            }
+
+            // Gestenfläche auf dem Kopf (ohne die Button-Zone)
+            MouseArea {
+                id: moveArea
+                anchors.top: headZone.top
+                anchors.bottom: headZone.bottom
+                anchors.left: headZone.left
+                anchors.right: headZone.right
+                anchors.rightMargin: 68   // Platz für Edit/X-Buttons (36+26+spacing)
+                acceptedButtons: Qt.LeftButton
+                preventStealing: true
+                property bool moving: false
+
+                onPressAndHold: {
+                    moving = true
+                    card.moveDragStart(exIndex)
+                }
+                onPositionChanged: {
+                    if (moving)
+                        card.moveDragMove(exIndex, mouse.y)
+                }
+                onReleased: {
+                    if (moving) {
+                        moving = false
+                        card.moveDragEnd(exIndex)
+                    } else {
+                        card.focusRequested(exIndex)
+                    }
+                }
+                onCanceled: {
+                    if (moving) {
+                        moving = false
+                        card.moveDragEnd(exIndex)
+                    }
                 }
             }
         }
@@ -102,45 +133,34 @@ Rectangle {
             Row {
                 id: setRow
                 property int setIndex: index
+                property bool done: modelData.done
                 width: parent.width
-                height: 30
+                height: 34
                 spacing: 3
                 leftPadding: 12
 
-                CheckBox {
-                    id: chk
-                    text: "Satz " + (setIndex + 1)
-                    checked: modelData.done
-                    font.pixelSize: 13
-                    anchors.verticalCenter: parent.verticalCenter
-
-                    indicator: Rectangle {
-                        implicitWidth: 20
-                        implicitHeight: 20
-                        x: chk.leftPadding
-                        y: (chk.height - 20) / 2
-                        radius: 4
-                        color: chk.checked ? "#d4a843" : "#222233"
-                        border.color: "#888888"
-                        Rectangle {
-                            visible: chk.checked
-                            anchors.fill: parent
-                            anchors.margins: 4
-                            color: "#1e1e2e"
-                            radius: 2
-                        }
-                    }
-                    contentItem: Label {
-                        text: chk.text
-                        color: "#ffffff"
-                        font.pixelSize: 13
-                        verticalAlignment: Text.AlignVCenter
-                        leftPadding: chk.indicator.width + 6
-                    }
+                Button {
+                    id: setBtn
+                    width: 98
+                    height: 30
+                    text: (setRow.done ? "✔ " : "") + "Satz " + (setIndex + 1)
                     onClicked: {
-                        card.saveSetRequested(exIndex, setIndex, chk.checked,
+                        card.saveSetRequested(exIndex, setIndex, !setRow.done,
                                               (repField.text.length > 0 ? parseInt(repField.text) : 0),
                                               pulsField.text)
+                    }
+                    background: Rectangle {
+                        radius: 15
+                        color: setRow.done ? "#FF8800" : "#222233"
+                        border.width: setRow.done ? 0 : 1
+                        border.color: "#FF8800"
+                    }
+                    contentItem: Text {
+                        text: setBtn.text
+                        color: setRow.done ? "#1e1e2e" : "#ffffff"
+                        font.pixelSize: 12
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
                     }
                 }
 
@@ -153,15 +173,17 @@ Rectangle {
                 TextField {
                     id: repField
                     text: modelData.reps.toString()
-                    width: 44
-                    height: 26
+                    width: 46
+                    height: 30
+                    padding: 5
+                    font.pixelSize: 13
                     color: "#ffffff"
                     selectByMouse: true
                     inputMethodHints: Qt.ImhDigitsOnly
                     verticalAlignment: Text.AlignVCenter
                     background: Rectangle { color: "#222233"; radius: 4 }
                     onEditingFinished: {
-                        card.saveSetRequested(exIndex, setIndex, chk.checked,
+                        card.saveSetRequested(exIndex, setIndex, setRow.done,
                                               (text.length > 0 ? parseInt(text) : 0),
                                               pulsField.text)
                     }
@@ -182,15 +204,17 @@ Rectangle {
                 TextField {
                     id: pulsField
                     text: modelData.puls
-                    width: 46
-                    height: 26
+                    width: 48
+                    height: 30
+                    padding: 5
+                    font.pixelSize: 13
                     color: "#ffffff"
                     selectByMouse: true
                     inputMethodHints: Qt.ImhDigitsOnly
                     verticalAlignment: Text.AlignVCenter
                     background: Rectangle { color: "#222233"; radius: 4 }
                     onEditingFinished: {
-                        card.saveSetRequested(exIndex, setIndex, chk.checked,
+                        card.saveSetRequested(exIndex, setIndex, setRow.done,
                                               (repField.text.length > 0 ? parseInt(repField.text) : 0),
                                               text)
                     }
