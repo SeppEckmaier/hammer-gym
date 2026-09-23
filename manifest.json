@@ -11,5 +11,5 @@
     "framework": "$ENV{CLICK_FRAMEWORK}",
     "maintainer": "SeppEckmaier <SeppSA@protonmail.com>",
     "title": "Hammer-Gym",
-    "version": "0.1.2"
+    "version": "0.1.3"
 }
