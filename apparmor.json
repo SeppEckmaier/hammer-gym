@@ -1,4 +1,3 @@
 {
-  "policy_version": 2404.1,
-  "policy_groups": ["document_files"]
+  "policy_version": "2404.1"
 }
