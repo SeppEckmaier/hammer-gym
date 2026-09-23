@@ -10,6 +10,16 @@ ApplicationWindow {
     title: "Hammer-Gym"
     color: "#1e1e2e"
 
+    // Sekundlichen Stoppuhr-Repaint nur bei aktivem Fenster; im Hintergrund
+    // keine Dauer-Renders unter der System-Statusleiste (Lomiri-Flackern).
+    onActiveChanged: gym.setTimerActive(root.active)
+
+    // Rune-Schrift (Uruz & Co. sind im Runic-Unicode-Block und fehlen auf Geräte-Fonts)
+    FontLoader {
+        id: runicFont
+        source: "fonts/NotoSansRunic.ttf"
+    }
+
     // ---------- Zustand ----------
     property int editIndex: -1
     property bool addMode: false
@@ -83,8 +93,8 @@ ApplicationWindow {
         messagePopup.open()
     }
 
-    function addTrainingToCalendar() {
-        gym.addToSystemCalendar()
+    function openSettings() {
+        settingsPopup.open()
     }
 
     function askDelete(idx, name) {
@@ -219,30 +229,63 @@ ApplicationWindow {
             anchors.topMargin: 6
             spacing: 4
 
-            ColumnLayout {
+            RowLayout {
                 Layout.fillWidth: true
-                spacing: 0
-                Label {
-                    text: "ᚺ ᚨ ᛗ ᛗ ᛖ ᚱ ᚷ ᚤ ᛗ"
-                    color: root.accent
-                    font.pixelSize: 11
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
+                spacing: 4
+
+                Item {
+                    width: 36
+                    height: 1
+                    Layout.alignment: Qt.AlignVCenter
                 }
-                Label {
-                    text: "ᚺ  Hammer-Gym  ᚺ"
-                    color: root.accent
-                    font.pixelSize: 20
-                    font.bold: true
+
+                ColumnLayout {
                     Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
+                    Layout.alignment: Qt.AlignVCenter
+                    spacing: 0
+                    Label {
+                        text: "ᚺ ᚨ ᛗ ᛗ ᛖ ᚱ ᚷ ᚤ ᛗ"
+                        color: root.accent
+                        font.family: runicFont.name
+                        font.pixelSize: 11
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                    Label {
+                        text: "ᚢ  Hammer-Gym  ᚢ"
+                        color: root.accent
+                        font.family: runicFont.name
+                        font.pixelSize: 20
+                        font.bold: true
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                    Label {
+                        text: "⚡  Kraft · Ausdauer · Wille  ⚡"
+                        color: root.dim
+                        font.pixelSize: 11
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignHCenter
+                    }
                 }
-                Label {
-                    text: "⚡  Kraft · Ausdauer · Wille  ⚡"
-                    color: root.dim
-                    font.pixelSize: 11
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
+
+                Button {
+                    id: settingsBtn
+                    text: "⚙"
+                    width: 36
+                    height: 36
+                    Layout.alignment: Qt.AlignVCenter
+                    ToolTip.visible: settingsBtn.hovered
+                    ToolTip.text: "Trainingskalender"
+                    onClicked: root.openSettings()
+                    background: Item {}
+                    contentItem: Text {
+                        text: settingsBtn.text
+                        color: root.accent
+                        font.pixelSize: 20
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
                 }
             }
 
@@ -263,8 +306,11 @@ ApplicationWindow {
                     color: root.accent
                     font.pixelSize: 22
                     font.bold: true
-                    Layout.fillWidth: true
                     Layout.alignment: Qt.AlignVCenter
+                }
+                Item {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
                 }
 
                 Button {
@@ -312,7 +358,7 @@ ApplicationWindow {
         spacing: 0
 
         // Wochentage
-        Row {
+        RowLayout {
             Layout.fillWidth: true
             Layout.leftMargin: 6
             Layout.rightMargin: 6
@@ -323,8 +369,9 @@ ApplicationWindow {
                 model: gym.dayInfo
                 Button {
                     id: dayBtn
-                    width: (parent.width - 12) / gym.dayInfo.length - 3
-                    height: 44
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 1
+                    Layout.preferredHeight: 44
                     padding: 0
                     onClicked: gym.setCurrentDay(modelData.name)
                     background: Rectangle {
@@ -333,19 +380,27 @@ ApplicationWindow {
                         radius: 4
                     }
                     contentItem: ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
                         spacing: 0
                         Label {
                             text: modelData.name.substring(0, 2)
                             color: modelData.active ? "#1e1e2e" : "#ffffff"
                             font.pixelSize: 13
                             font.bold: modelData.active
-                            Layout.alignment: Qt.AlignHCenter
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
                         }
                         Label {
                             text: modelData.label
                             color: modelData.active ? "#1e1e2e" : "#aaaaaa"
                             font.pixelSize: 9
-                            Layout.alignment: Qt.AlignHCenter
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
                         }
                     }
                 }
@@ -408,8 +463,7 @@ ApplicationWindow {
                     { label: "Neu",      emoji: "+", cmd: "add",    acc: true,  pref: 52, big: true },
                     { label: "Rückgängig", emoji: "↩", cmd: "undo",  acc: true,  pref: 92 },
                     { label: "Pause",    emoji: "🛌", cmd: "pause",  acc: false, pref: 52 },
-                    { label: "Tag",      emoji: "⇄", cmd: "move",   acc: true,  pref: 52 },
-                    { label: "Export",   emoji: "📅", cmd: "export", acc: false, pref: 52 }
+                    { label: "Tag",      emoji: "⇄", cmd: "move",   acc: true,  pref: 52 }
                 ]
                 Button {
                     id: actBtn
@@ -424,7 +478,6 @@ ApplicationWindow {
                         case "undo":   gym.undo(); break
                         case "pause":  root.onPauseClicked(); break
                         case "move":   root.onMoveClicked(); break
-                        case "export": root.addTrainingToCalendar(); break
                         }
                     }
                     background: Rectangle {
@@ -568,6 +621,7 @@ ApplicationWindow {
                                 cardLoader.item.removeSetRequested.connect(root.askRemoveSet)
                                 cardLoader.item.saveSetRequested.connect(gym.saveSet)
                                 cardLoader.item.focusRequested.connect(root.openFocus)
+                                cardLoader.item.moveRequested.connect(gym.moveExercise)
                                 cardLoader.item.moveDragStart.connect(root.beginMoveDrag)
                                 cardLoader.item.moveDragMove.connect(root.updateMoveDrag)
                                 cardLoader.item.moveDragEnd.connect(root.endMoveDrag)
@@ -582,7 +636,10 @@ ApplicationWindow {
                             sourceComponent: editCardComp
                             onLoaded: {
                                 editLoader.item.exData = Qt.binding(function() { return modelData })
-                                editLoader.item.saveRequested.connect(gym.saveEdit)
+                                editLoader.item.saveRequested.connect(function(idx, name, sets, reps, band, notiz) {
+                                    gym.saveEdit(idx, name, sets, reps, band, notiz)
+                                    root.cancelEdit()   // Formular nach dem Speichern schließen
+                                })
                                 editLoader.item.cancelRequested.connect(root.cancelEdit)
                                 root.hookFieldScrolling(editLoader.item)
                             }
@@ -658,6 +715,7 @@ ApplicationWindow {
     function onMoveClicked() {
         movePopup.targetOptions = gym.otherDayNames()
         moveCb.currentIndex = 0
+        mergeCb.checked = false
         movePopup.updateMergeVisibility()
         movePopup.open()
     }
@@ -665,6 +723,78 @@ ApplicationWindow {
     // ============================
     // Popups
     // ============================
+    Popup {
+        id: settingsPopup
+        modal: true
+        focus: true
+        anchors.centerIn: parent
+        width: parent.width * 0.95
+        height: parent.height * 0.97
+        padding: 12
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+        background: Rectangle { color: "#20202c"; radius: 8 }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 6
+
+            // ---------- Kompakte Kopfzeile: Titel + Trainingsgerät-Umschalter ----------
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                Label {
+                    text: "⚙  Einstellungen"
+                    color: root.accent
+                    font.pixelSize: 14
+                    font.bold: true
+                    Layout.fillWidth: true
+                }
+
+                Label {
+                    text: "Trainingsgerät:"
+                    color: "#cccccc"
+                    font.pixelSize: 12
+                }
+
+                Button {
+                    id: unitModeBtn
+                    text: gym.unitMode === "gewicht" ? "Gewicht" : "Band"
+                    Layout.preferredHeight: 28
+                    implicitWidth: 78
+                    onClicked: {
+                        gym.unitMode = (gym.unitMode === "gewicht") ? "band" : "gewicht"
+                    }
+                    background: Rectangle {
+                        color: gym.unitMode === "gewicht" ? "#2a4a5a" : "#5a2a2a"
+                        radius: 4
+                    }
+                    contentItem: Text {
+                        text: unitModeBtn.text
+                        color: "#ffffff"
+                        font.pixelSize: 12
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                height: 1
+                color: "#44445a"
+            }
+
+            CalendarView {
+                id: calendarView
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                calendarEntries: gym.calendarEntries
+                onCloseRequested: settingsPopup.close()
+            }
+        }
+    }
+
     Popup {
         id: messagePopup
         modal: true
@@ -844,36 +974,20 @@ ApplicationWindow {
             }
             Label {
                 Layout.fillWidth: true
-                text: "Als Kalender-Eintrag exportieren?"
+                text: "Der Eintrag wurde im Trainings-Kalender gespeichert."
                 color: root.dim
                 font.pixelSize: 13
                 wrapMode: Text.Wrap
             }
-            Row {
+            Button {
+                id: expOkBtn
+                text: "OK"
                 Layout.alignment: Qt.AlignHCenter
-                spacing: 10
-                Button {
-                    id: expYesBtn
-                    text: "📅 Exportieren"
-                    onClicked: {
-                        root.addTrainingToCalendar()
-                        completedPopup.close()
-                    }
-                    background: Rectangle { color: "#2a5a2a"; radius: 4 }
-                    contentItem: Text {
-                        text: expYesBtn.text
-                        color: "#ffffff"
-                    }
-                }
-                Button {
-                    id: expNoBtn
-                    text: "Nein"
-                    onClicked: completedPopup.close()
-                    background: Rectangle { color: "#555555"; radius: 4 }
-                    contentItem: Text {
-                        text: expNoBtn.text
-                        color: "#ffffff"
-                    }
+                onClicked: completedPopup.close()
+                background: Rectangle { color: "#3B8ED0"; radius: 4 }
+                contentItem: Text {
+                    text: expOkBtn.text
+                    color: "#ffffff"
                 }
             }
         }
@@ -925,7 +1039,6 @@ ApplicationWindow {
                     text: "Ruhetag eintragen"
                     onClicked: {
                         gym.setPause(pauseNotizF.text)
-                        gym.addToSystemCalendar()   // Ruhetag in den System-Kalender
                         pausePopup.close()
                     }
                     background: Rectangle { color: "#5a2a5a"; radius: 4 }
@@ -980,6 +1093,7 @@ ApplicationWindow {
             ComboBox {
                 id: moveCb
                 Layout.fillWidth: true
+                Layout.maximumWidth: parent.width
                 model: movePopup.targetOptions
                 font.pixelSize: 14
                 onCurrentIndexChanged: movePopup.updateMergeVisibility()
@@ -988,9 +1102,11 @@ ApplicationWindow {
                     text: moveCb.currentText
                     color: "#ffffff"
                     font.pixelSize: 14
+                    elide: Text.ElideRight
                     verticalAlignment: Text.AlignVCenter
                     horizontalAlignment: Text.AlignLeft
                     leftPadding: 8
+                    clip: true
                 }
                 indicator: Text {
                     text: "▾"
@@ -1004,16 +1120,18 @@ ApplicationWindow {
                     y: moveCb.height + 2
                     width: moveCb.width
                     padding: 6
+                    clip: true
                     background: Rectangle { color: "#2b2b3b"; radius: 6; border.color: "#555555" }
                     contentItem: ListView {
                         clip: true
                         implicitHeight: movePopup.targetOptions.length * 44 + 12
+                        width: parent.width
                         model: movePopup.targetOptions
                         currentIndex: moveCb.currentIndex
                         highlightMoveDuration: 0
                         highlight: Rectangle { color: "#44445a"; radius: 4 }
                         delegate: ItemDelegate {
-                            width: moveCb.width - 12
+                            width: parent.width
                             height: 44
                             text: modelData
                             font.pixelSize: 14
@@ -1031,6 +1149,8 @@ ApplicationWindow {
                 text: "An bestehende Übungen anhängen (sonst ersetzen)"
                 font.pixelSize: 12
                 visible: movePopup.mergeVisible
+                Layout.fillWidth: true
+                Layout.preferredWidth: parent.width
                 indicator: Rectangle {
                     implicitWidth: 18
                     implicitHeight: 18
@@ -1049,6 +1169,10 @@ ApplicationWindow {
                     color: "#ffffff"
                     font.pixelSize: 12
                     wrapMode: Text.Wrap
+                    verticalAlignment: Text.AlignVCenter
+                    anchors.left: mergeCb.indicator.right
+                    anchors.right: mergeCb.right
+                    anchors.leftMargin: 8
                 }
             }
             Row {
@@ -1058,9 +1182,20 @@ ApplicationWindow {
                     id: moveOkBtn
                     text: "Verschieben"
                     onClicked: {
-                        if (moveCb.currentIndex >= 0)
-                            gym.moveDay(moveCb.currentText, mergeCb.checked)
-                        movePopup.close()
+                        if (moveCb.currentIndex < 0) {
+                            movePopup.close()
+                            return
+                        }
+                        var target = moveCb.currentText
+                        // Zieltag hat bereits Übungen und "anhängen" ist nicht aktiv →
+                        // Übungen würden ersetzt werden: erst bestätigen lassen.
+                        if (movePopup.mergeVisible && !mergeCb.checked) {
+                            confirmOverwritePopup.targetDay = target
+                            confirmOverwritePopup.open()
+                        } else {
+                            gym.moveDay(target, mergeCb.checked)
+                            movePopup.close()
+                        }
                     }
                     background: Rectangle { color: "#2a4a5a"; radius: 4 }
                     contentItem: Text {
@@ -1084,6 +1219,63 @@ ApplicationWindow {
         function updateMergeVisibility() {
             var target = moveCb.currentIndex >= 0 ? moveCb.currentText : ""
             mergeVisible = target.length > 0 && gym.dayHasExercises(target)
+        }
+    }
+
+    // Bestätigungsdialog: Ziel-Tag hat bereits Übungen
+    Popup {
+        id: confirmOverwritePopup
+        modal: true
+        focus: true
+        anchors.centerIn: parent
+        width: parent.width * 0.85
+        padding: 16
+        background: Rectangle { color: "#2b2b3b"; radius: 8 }
+
+        property string targetDay: ""
+
+        ColumnLayout {
+            width: parent.width
+            spacing: 10
+            Label {
+                Layout.fillWidth: true
+                text: "Überschreiben?"
+                color: root.accent
+                font.pixelSize: 16
+                font.bold: true
+            }
+            Label {
+                Layout.fillWidth: true
+                text: "'" + confirmOverwritePopup.targetDay + "' hat bereits eigene Übungen. " +
+                      "Diese werden ersetzt und gehen verloren (außer per '↩ Rückgängig')."
+                color: "#ffffff"
+                font.pixelSize: 13
+                wrapMode: Text.Wrap
+            }
+            Row {
+                Layout.alignment: Qt.AlignHCenter
+                spacing: 10
+                Button {
+                    id: owYesBtn
+                    text: "Ersetzen"
+                    Layout.alignment: Qt.AlignHCenter
+                    onClicked: {
+                        gym.moveDay(confirmOverwritePopup.targetDay, false)
+                        confirmOverwritePopup.close()
+                        movePopup.close()
+                    }
+                    background: Rectangle { color: "#8a2a2a"; radius: 4 }
+                    contentItem: Text { text: owYesBtn.text; color: "#ffffff" }
+                }
+                Button {
+                    id: owNoBtn
+                    text: "Abbrechen"
+                    Layout.alignment: Qt.AlignHCenter
+                    onClicked: confirmOverwritePopup.close()
+                    background: Rectangle { color: "#555555"; radius: 4 }
+                    contentItem: Text { text: owNoBtn.text; color: "#ffffff" }
+                }
+            }
         }
     }
 

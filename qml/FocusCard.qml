@@ -49,7 +49,9 @@ Rectangle {
                     Layout.fillWidth: true
                 }
                 Label {
-                    text: (exData ? exData.band : "") + "-Band   ·   Ziel: " + (exData ? exData.reps : 0) + " Wdh."
+                    text: (exData ? (gym.unitMode === "gewicht" ? "Gewicht " : "Band ")
+                                   : "") + (exData ? gym.bandDisplay(exData.band) : "") +
+                          "   ·   Ziel: " + (exData ? exData.reps : 0) + " Wdh."
                     color: "#aaaaaa"
                     font.pixelSize: 12
                     Layout.fillWidth: true
@@ -145,20 +147,30 @@ Rectangle {
                             spacing: 1
                             Label {
                                 text: "Wdh:"
-                                color: "#aaaaaa"
-                                font.pixelSize: 10
+                                color: "#ffffff"
+                                font.pixelSize: 11
                             }
                             TextField {
                                 id: freps
                                 text: modelData.reps.toString()
-                                width: 66
+                                width: 72
+                                Layout.preferredWidth: 72
+                                Layout.minimumWidth: 72
+                                Layout.maximumWidth: 72
+                                maximumLength: 4
                                 height: 34
                                 padding: 5
                                 font.pixelSize: 16
                                 color: "#ffffff"
+                                selectByMouse: true
                                 inputMethodHints: Qt.ImhDigitsOnly
                                 verticalAlignment: Text.AlignVCenter
-                                background: Rectangle { color: "#222233"; radius: 4 }
+                                background: Rectangle {
+                                    color: "#2b2b40"
+                                    radius: 4
+                                    border.width: 1
+                                    border.color: "#5a5a7a"
+                                }
                                 onEditingFinished: {
                                     focusCard.saveSetRequested(exData.idx, index, fsetRow.done,
                                                                (text.length > 0 ? parseInt(text) : 0),
@@ -169,21 +181,32 @@ Rectangle {
                         ColumnLayout {
                             spacing: 1
                             Label {
-                                text: "Puls"
-                                color: "#ff6666"
-                                font.pixelSize: 10
+                                text: "Puls:"
+                                color: "#ff8888"
+                                font.pixelSize: 11
                             }
                             TextField {
                                 id: fpuls
                                 text: modelData.puls
-                                width: 66
+                                width: 72
+                                Layout.preferredWidth: 72
+                                Layout.minimumWidth: 72
+                                Layout.maximumWidth: 72
+                                maximumLength: 3
                                 height: 34
                                 padding: 5
                                 font.pixelSize: 16
                                 color: "#ffffff"
+                                placeholderText: "–"
+                                selectByMouse: true
                                 inputMethodHints: Qt.ImhDigitsOnly
                                 verticalAlignment: Text.AlignVCenter
-                                background: Rectangle { color: "#222233"; radius: 4 }
+                                background: Rectangle {
+                                    color: "#3a2a2a"
+                                    radius: 4
+                                    border.width: 1
+                                    border.color: "#a05555"
+                                }
                                 onEditingFinished: {
                                     focusCard.saveSetRequested(exData.idx, index, fsetRow.done,
                                                                (freps.text.length > 0 ? parseInt(freps.text) : 0),
@@ -200,10 +223,10 @@ Rectangle {
             Layout.alignment: Qt.AlignHCenter
             spacing: 10
             Button {
-                text: "＋ Satz hinzufügen"
+                text: "+  Satz hinzufügen"
                 height: 38
                 onClicked: focusCard.addSetRequested(exData.idx)
-                background: Rectangle { color: "#1a3a1a"; radius: 6 }
+                background: Rectangle { color: "#2f2f3f"; radius: 6 }
                 contentItem: Text {
                     text: parent.text
                     color: "#ffffff"
@@ -213,11 +236,11 @@ Rectangle {
                 }
             }
             Button {
-                text: "➖ Satz"
+                text: "−  Satz entfernen"
                 height: 38
                 visible: exData && exData.sets > 1
                 onClicked: focusCard.removeSetRequested(exData.idx)
-                background: Rectangle { color: "#3a1a1a"; radius: 6 }
+                background: Rectangle { color: "#2f2f3f"; radius: 6 }
                 contentItem: Text {
                     text: parent.text
                     color: "#ffffff"

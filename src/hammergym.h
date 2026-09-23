@@ -23,7 +23,9 @@ class HammerGym : public QObject
     Q_PROPERTY(QString stopwatchText READ stopwatchText NOTIFY stopwatchChanged)
     Q_PROPERTY(bool stopwatchRunning READ stopwatchRunning NOTIFY stopwatchChanged)
     Q_PROPERTY(QStringList bandOptions READ bandOptions CONSTANT)
+    Q_PROPERTY(QString unitMode READ unitMode WRITE setUnitMode NOTIFY unitModeChanged)
     Q_PROPERTY(bool canUndo READ canUndo NOTIFY undoChanged)
+    Q_PROPERTY(QVariantList calendarEntries READ calendarEntries NOTIFY dataChanged)
 
 public:
     explicit HammerGym(QObject *parent = nullptr);
@@ -40,13 +42,17 @@ public:
     QString stopwatchText() const;
     bool stopwatchRunning() const;
     QStringList bandOptions() const;
+    QString unitMode() const;
+    void setUnitMode(const QString &mode);
     bool canUndo() const;
+    QVariantList calendarEntries() const;
 
     // Stopwatch (Trainingsuhr)
     Q_INVOKABLE void stopwatchStart();
     Q_INVOKABLE void stopwatchPause();
     Q_INVOKABLE void stopwatchStop();
     Q_INVOKABLE int stopwatchSeconds() const;
+    Q_INVOKABLE void setTimerActive(bool active);
 
     // Set/Exercise actions
     Q_INVOKABLE bool saveSet(int exIdx, int setIdx, bool checked, int reps, const QString &puls);
@@ -65,9 +71,6 @@ public:
     Q_INVOKABLE void setPause(const QString &notiz);
     Q_INVOKABLE void clearPause();
     Q_INVOKABLE void undo();
-    Q_INVOKABLE QString exportIcs();    // liefert Pfad oder Leerstring
-    Q_INVOKABLE QString addToSystemCalendar();    // Training/Ruhetag in System-Kalender
-    Q_INVOKABLE QString systemCalendarFile() const;    // Pfad des System-Kalenders
 
     Q_INVOKABLE QString todayString() const;
     Q_INVOKABLE QString dateLabel(const QString &day) const;
@@ -75,14 +78,18 @@ public:
     Q_INVOKABLE bool dayHasExercises(const QString &day) const;
     Q_INVOKABLE QStringList otherDayNames() const;
     Q_INVOKABLE QString bandColor(const QString &band) const;
+    Q_INVOKABLE QString bandDisplay(const QString &band) const;
     Q_INVOKABLE QString bandColorForIdx(int exIdx) const;
-    Q_INVOKABLE QString docsDir() const;
+    QString weightColor(double kg) const;
+    QString weightDisplay(double kg) const;
+    QString bandDisplayBand(const QString &band) const;
 
 signals:
     void dataChanged();
     void currentDayChanged();
     void stopwatchChanged();
     void undoChanged();
+    void unitModeChanged();
     void dayCompleted(const QString &day);
     void message(const QString &title, const QString &text);
 
@@ -99,24 +106,20 @@ private:
     void clearPauseInternal(const QString &day);
     bool isPausedFor(const QString &day) const;
     void checkCompleted();
+    bool exerciseCompleteInToday(int exIdx) const;
+    bool calendarHasTrainingEntry(const QString &date) const;
+    int exerciseIndexOf(const QVariantList &list, const QVariantMap &ex) const;
+    void updateCalendarEntryWithToday();
     QString dataDir() const;
     QString dataFilePath() const;
-    QString icsDir() const;
-    QString systemCalendarPath() const;
-    void collectEvent(const QString &day, bool pause, QString &summary,
-                      QString &description, QString &dateStr, QString &dtendStr,
-                      QString &dtStr) const;
-    QString writeStandaloneIcs(const QString &day, const QString &uid,
-                               const QString &dateStr, const QString &dtendStr,
-                               const QString &dtStr, const QString &summary,
-                               const QString &description);
-    void consumeCompleted(const QString &day);
 
     QString m_currentDay;
     QVariantMap m_plan;       // Tag -> Liste von Übungen
     QVariantMap m_progress;   // Tag -> { "0": {...}, "0_reps": {...}, "0_puls": {...} }
     QVariantMap m_pauses;     // Tag -> Datum
     QVariantList m_undoStack; // max. 10 tiefe Kopien
+    QVariantList m_calendar;  // In-App-Kalender: History der Trainingseinheiten
+    QString m_unitMode = QStringLiteral("band"); // band | gewicht
 
     int m_progressDone = 0;
     int m_progressTotal = 0;
@@ -125,15 +128,9 @@ private:
     int m_stopwatchElapsed = 0;       // Sekunden (pausierte Zeit)
     QDateTime m_stopwatchStart;
     QTimer *m_timer = nullptr;
+    bool m_timerActive = true;
 
     bool m_dayCompletedHandled = false; // verhindert doppeltes dayCompleted
-
-    // Gesicherte Daten des letzten abgeschlossenen Trainings
-    // (werden für den optionalen ICS-Export verwendet, da der Tages-Progress
-    // bei Abschluss sofort geleert wird — wie im Python-Original)
-    QString m_completedDay;
-    QVariantList m_completedPlan;
-    QVariantMap m_completedProgress;
 };
 
-#endif // HAMMERGYM_H
+#endif // HAMMERGYM_H // HAMMERGYM_H

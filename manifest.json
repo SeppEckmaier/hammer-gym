@@ -1,6 +1,6 @@
 {
     "name": "hammer-gym",
-    "description": "Widerstandsband-Training mit Wochenplan, Satz-Tracking, Puls, Trainingsuhr und ICS-Export.",
+    "description": "Widerstandsband-Training mit Wochenplan, Satz-Tracking, Puls, Trainingsuhr und eigenem Trainings-Kalender.",
     "architecture": "@CLICK_ARCH@",
     "hooks": {
         "hammer-gym": {

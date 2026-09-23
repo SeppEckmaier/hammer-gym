@@ -1,5 +1,4 @@
 {
   "policy_version": 2404.1,
-  "policy_groups": ["document_files"],
-  "write_path": ["@{HOME}/.local/share/evolution/calendar/system/calendar.ics"]
+  "policy_groups": ["document_files"]
 }

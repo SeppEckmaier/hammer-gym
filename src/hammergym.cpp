@@ -1,6 +1,7 @@
 #include "hammergym.h"
 
 #include <QDateTime>
+#include <QColor>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -21,11 +22,12 @@ const QStringList DAY_NAMES = {
     QStringLiteral("Sonntag")
 };
 
-// Reihenfolge gepflegt wie im Original (Python BAND_OPTIONS)
+// Reihenfolge entsprechend der Handelssortierung (Verbraucher-Sicht):
+// gelb → orange → rot → schwarz → lila → grün → blau → grau
 const QStringList BAND_OPTS = {
-    QStringLiteral("rot"), QStringLiteral("gruen"), QStringLiteral("blau"),
-    QStringLiteral("gelb"), QStringLiteral("schwarz"), QStringLiteral("grau"),
-    QStringLiteral("lila"), QStringLiteral("orange")
+    QStringLiteral("gelb"), QStringLiteral("orange"), QStringLiteral("rot"),
+    QStringLiteral("schwarz"), QStringLiteral("lila"), QStringLiteral("gruen"),
+    QStringLiteral("blau"), QStringLiteral("grau")
 };
 
 const QHash<QString, QString> BAND_COLORS = {
@@ -109,22 +111,6 @@ QString HammerGym::dataFilePath() const
     return dataDir() + QStringLiteral("/progress.json");
 }
 
-QString HammerGym::icsDir() const
-{
-    // Sichtbar für den Nutzer (Punkt 9): ~/Documents/hammer-gym
-    QString dir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-    if (dir.isEmpty())
-        dir = QDir::homePath() + QStringLiteral("/Documents");
-    dir += QStringLiteral("/hammer-gym");
-    QDir().mkpath(dir);
-    return dir;
-}
-
-QString HammerGym::docsDir() const
-{
-    return icsDir();
-}
-
 // ---------------------------------------------------------------- Laden/Speichern
 
 void HammerGym::load()
@@ -160,6 +146,12 @@ void HammerGym::load()
 
     m_progress = root.value("progress").toVariant().toMap();
     m_pauses = root.value("pauses").toVariant().toMap();
+    m_calendar = root.value("calendar").toVariant().toList();
+
+    const QVariantMap settings = root.value("settings").toVariant().toMap();
+    const QString mode = settings.value(QStringLiteral("unitMode")).toString();
+    m_unitMode = (mode == QStringLiteral("gewicht")) ? QStringLiteral("gewicht")
+                                                      : QStringLiteral("band");
 }
 
 void HammerGym::save()
@@ -169,19 +161,28 @@ void HammerGym::save()
     const QString bak = path + QStringLiteral(".bak");
     const QString bak2 = path + QStringLiteral(".bak2");
 
+    bool backupOk = true;
     if (QFile::exists(bak)) {
         QFile::remove(bak2);
-        QFile::copy(bak, bak2);
+        if (!QFile::copy(bak, bak2)) backupOk = false;
     }
     if (QFile::exists(path)) {
         QFile::remove(bak);
-        QFile::copy(path, bak);
+        if (!QFile::copy(path, bak)) backupOk = false;
+    }
+    if (!backupOk) {
+        qWarning() << "HammerGym: Backup-Rotation fehlgeschlagen für" << path;
     }
 
     QJsonObject root;
     root.insert(QStringLiteral("plan"), QJsonObject::fromVariantMap(m_plan));
     root.insert(QStringLiteral("progress"), QJsonObject::fromVariantMap(m_progress));
     root.insert(QStringLiteral("pauses"), QJsonObject::fromVariantMap(m_pauses));
+    root.insert(QStringLiteral("calendar"), QJsonArray::fromVariantList(m_calendar));
+
+    QJsonObject settings;
+    settings.insert(QStringLiteral("unitMode"), m_unitMode);
+    root.insert(QStringLiteral("settings"), settings);
 
     QSaveFile out(path);
     if (out.open(QIODevice::WriteOnly)) {
@@ -255,7 +256,77 @@ QString HammerGym::dateLabel(const QString &day) const
 
 QString HammerGym::bandColor(const QString &band) const
 {
+    if (m_unitMode == QStringLiteral("gewicht")) {
+        bool ok = false;
+        const double kg = band.toDouble(&ok);
+        if (ok && kg > 0.0)
+            return weightColor(kg);
+        return QStringLiteral("#aaaaaa");
+    }
     return BAND_COLORS.value(band.toLower(), QStringLiteral("#aaaaaa"));
+}
+
+QString HammerGym::bandDisplay(const QString &band) const
+{
+    if (m_unitMode == QStringLiteral("gewicht")) {
+        bool ok = false;
+        const double kg = band.toDouble(&ok);
+        if (ok && kg > 0.0)
+            return weightDisplay(kg);
+        // Falls es noch ein alter Band-Eintrag ist (nicht-numerisch),
+        // die eigentliche Bandfarbe anzeigen statt den rohen Key.
+        return bandDisplayBand(band);
+    }
+    return bandDisplayBand(band);
+}
+
+QString HammerGym::bandDisplayBand(const QString &band) const
+{
+    if (band.compare(QStringLiteral("gruen"), Qt::CaseInsensitive) == 0)
+        return QStringLiteral("grün");
+    if (band.compare(QStringLiteral("rot"), Qt::CaseInsensitive) == 0)
+        return QStringLiteral("rot");
+    if (band.compare(QStringLiteral("blau"), Qt::CaseInsensitive) == 0)
+        return QStringLiteral("blau");
+    if (band.compare(QStringLiteral("gelb"), Qt::CaseInsensitive) == 0)
+        return QStringLiteral("gelb");
+    if (band.compare(QStringLiteral("schwarz"), Qt::CaseInsensitive) == 0)
+        return QStringLiteral("schwarz");
+    if (band.compare(QStringLiteral("grau"), Qt::CaseInsensitive) == 0)
+        return QStringLiteral("grau");
+    if (band.compare(QStringLiteral("lila"), Qt::CaseInsensitive) == 0)
+        return QStringLiteral("lila");
+    if (band.compare(QStringLiteral("orange"), Qt::CaseInsensitive) == 0)
+        return QStringLiteral("orange");
+    return band;
+}
+
+// Farbskala für Gewichte: heller = leichter, kräftiger = schwerer
+QString HammerGym::weightColor(double kg) const
+{
+    if (kg <= 0.0) return QStringLiteral("#aaaaaa");
+    const double t = qBound(0.0, (kg - 1.0) / 39.0, 1.0); // 1kg=0 … 40kg+=1
+    int h = 0;
+    int s = 0;
+    int v = 0;
+    if (t < 0.5) {
+        const double u = t / 0.5;             // 0..1 grün→orange
+        h = qRound(120.0 * (1.0 - u));
+        s = 200;
+        v = 200;
+    } else {
+        const double u = (t - 0.5) / 0.5;     // 0..1 orange→rot
+        h = qRound(40.0 * (1.0 - u));
+        s = 220;
+        v = 210;
+    }
+    return QColor::fromHsv(h, s, v).name();
+}
+
+QString HammerGym::weightDisplay(double kg) const
+{
+    QString s = QString::number(kg, 'g', 3);
+    return s + QStringLiteral(" kg");
 }
 
 bool HammerGym::dayHasExercises(const QString &day) const
@@ -446,8 +517,25 @@ void HammerGym::stopwatchStart()
     if (m_stopwatchRunning) return;
     m_stopwatchRunning = true;
     m_stopwatchStart = QDateTime::currentDateTime();
-    m_timer->start();
+    if (m_timerActive)
+        m_timer->start();
     emit stopwatchChanged();
+}
+
+// Sekundlichen Repaint aussetzen, solange das Fenster nicht aktiv ist bzw.
+// die App im Hintergrund läuft. Vermeidet unnötige Dauer-Renders direkt
+// unter der System-Statusleiste (Lomiri-Compositing-Ausfall in Verbindung
+// mit Notification-Bannern).
+void HammerGym::setTimerActive(bool active)
+{
+    m_timerActive = active;
+    if (m_stopwatchRunning) {
+        if (active) {
+            m_timer->start();
+        } else {
+            m_timer->stop();
+        }
+    }
 }
 
 void HammerGym::stopwatchPause()
@@ -519,6 +607,13 @@ bool HammerGym::saveSet(int exIdx, int setIdx, bool checked, int reps, const QSt
         m_dayCompletedHandled = false;
     }
 
+    // Nachtrag: Der Tag wurde bereits abgeschlossen (Kalendereintrag existiert),
+    // aber eine nachträglich hinzugefügte Übung wurde jetzt komplett absolviert.
+    // Dann wird der bestehende Kalendereintrag um diese Übung ergänzt. Reines
+    // Abhaken/Abwählen einzelner Sätze ändert den Kalender nicht.
+    if (checked && exerciseCompleteInToday(exIdx) && calendarHasTrainingEntry(todayString()))
+        updateCalendarEntryWithToday();
+
     return true;
 }
 
@@ -546,30 +641,145 @@ void HammerGym::checkCompleted()
             for (int v : repsList) sum += v;
             avg = qRound(double(sum) / double(repsList.size()));
         }
-        // Deckel bei 50 Wdh.
-        ex.insert(QStringLiteral("reps"), qMin(avg + 1, 50));
+        // Progressiv: Ziel für den nächsten Durchgang um 1 erhöhen (ohne Deckel,
+        // damit auch hohe Wdh.-Ziele wie 200 erhalten bleiben).
+        ex.insert(QStringLiteral("reps"), avg + 1);
         newList[i] = ex;
     }
 
-    // Progress vor dem Löschen für den ICS-Export sichern
+    // Trainingsdaten des abgeschlossenen Tages für den In-App-Kalender sichern,
+    // da der Tages-Progress bei Abschluss geleert wird (wie im Python-Original).
     const QVariantMap oldProgress = m_progress.value(day).toMap();
     const QVariantList oldPlan = list;
-    m_completedDay = day;
-    m_completedPlan = oldPlan;
-    m_completedProgress = oldProgress;
+
+    // Trainingszeit VOR dem Stoppen sichern
+    const int trainingszeit = stopwatchSeconds();
+    stopwatchStop();
+
+    // In-App-Kalender: Geschichte der abgeschlossenen Trainingseinheiten
+    QVariantMap entry;
+    entry.insert(QStringLiteral("date"), todayString());
+    entry.insert(QStringLiteral("day"), day);
+    entry.insert(QStringLiteral("type"), QStringLiteral("training"));
+    entry.insert(QStringLiteral("duration"), trainingszeit);
+    entry.insert(QStringLiteral("plan"), oldPlan);
+    entry.insert(QStringLiteral("progress"), oldProgress);
+
+    // Gleichen Tag ersetzen, falls schon ein (evtl. Ruhetag-)Eintrag existiert
+    for (int i = 0; i < m_calendar.size(); ++i) {
+        if (m_calendar.at(i).toMap().value(QStringLiteral("date")).toString() == entry.value(QStringLiteral("date"))) {
+            m_calendar[i] = entry;
+            entry.clear();
+            break;
+        }
+    }
+    if (!entry.isEmpty())
+        m_calendar.append(entry);
 
     m_plan.insert(day, newList);
     m_progress.insert(day, QVariantMap());
-
-    // Trainingszeit VOR dem Stoppen sichern (wird direkt beim Export ermittelt)
-    const int trainingszeit = stopwatchSeconds();
-    stopwatchStop();
-    Q_UNUSED(trainingszeit);
 
     save();
 
     emit dayCompleted(day);
     recompute();
+}
+
+// Prüft, ob eine Übung am heutigen Tag vollständig absolviert wurde
+bool HammerGym::exerciseCompleteInToday(int exIdx) const
+{
+    const QVariantList list = m_plan.value(m_currentDay).toList();
+    if (exIdx < 0 || exIdx >= list.size()) return false;
+    const int sets = list.at(exIdx).toMap().value(QStringLiteral("sets")).toInt();
+    const QVariantMap dayProg = m_progress.value(m_currentDay).toMap();
+    const QVariantMap prog = dayProg.value(QString::number(exIdx)).toMap();
+    if (prog.value(QStringLiteral("date")).toString() != todayString()) return false;
+    for (int s = 0; s < sets; ++s) {
+        if (!prog.value(QString::number(s)).toBool()) return false;
+    }
+    return sets > 0;
+}
+
+// Gibt es bereits einen abgeschlossenen Trainingseintrag für das Datum?
+bool HammerGym::calendarHasTrainingEntry(const QString &date) const
+{
+    for (int i = 0; i < m_calendar.size(); ++i) {
+        const QVariantMap e = m_calendar.at(i).toMap();
+        if (e.value(QStringLiteral("date")).toString() == date
+            && e.value(QStringLiteral("type")).toString() == QStringLiteral("training"))
+            return true;
+    }
+    return false;
+}
+
+// Sucht eine Übung (Name + Sätze + Band) in einer Planliste
+int HammerGym::exerciseIndexOf(const QVariantList &list, const QVariantMap &ex) const
+{
+    const QString name = ex.value(QStringLiteral("name")).toString().trimmed();
+    const int sets = ex.value(QStringLiteral("sets")).toInt();
+    const QString band = ex.value(QStringLiteral("band")).toString();
+    for (int i = 0; i < list.size(); ++i) {
+        const QVariantMap o = list.at(i).toMap();
+        if (o.value(QStringLiteral("name")).toString().trimmed() == name
+            && o.value(QStringLiteral("sets")).toInt() == sets
+            && o.value(QStringLiteral("band")).toString() == band)
+            return i;
+    }
+    return -1;
+}
+
+// Erweitert den bestehenden Kalendereintrag von heute um nachträglich
+// hinzugefügte und inzwischen absolvierte Übungen (Überschreib-Logik).
+void HammerGym::updateCalendarEntryWithToday()
+{
+    const QString date = todayString();
+    int idx = -1;
+    for (int i = 0; i < m_calendar.size(); ++i) {
+        const QVariantMap e = m_calendar.at(i).toMap();
+        if (e.value(QStringLiteral("date")).toString() == date
+            && e.value(QStringLiteral("type")).toString() == QStringLiteral("training")) {
+            idx = i;
+            break;
+        }
+    }
+    if (idx < 0) return;
+
+    QVariantMap entry = m_calendar.at(idx).toMap();
+    QVariantList calPlan = entry.value(QStringLiteral("plan")).toList();
+    QVariantMap calProg = entry.value(QStringLiteral("progress")).toMap();
+
+    const QVariantList curPlan = m_plan.value(m_currentDay).toList();
+    const QVariantMap curProg = m_progress.value(m_currentDay).toMap();
+
+    bool changed = false;
+    for (int i = 0; i < curPlan.size(); ++i) {
+        const QVariantMap ex = curPlan.at(i).toMap();
+        // Nur Ergänzungen, die nicht schon Teil des gesicherten Eintrags sind
+        if (exerciseIndexOf(calPlan, ex) >= 0) continue;
+        const int newIdx = calPlan.size();
+        calPlan.append(ex);
+
+        // Fortschritt der neuen Übung übernehmen, sofern vom heutigen Tag
+        const QVariantMap prog = curProg.value(QString::number(i)).toMap();
+        if (prog.value(QStringLiteral("date")).toString() == date) {
+            calProg.insert(QString::number(newIdx), prog);
+            const QString repsK = QStringLiteral("%1_reps").arg(i);
+            const QString pulsK = QStringLiteral("%1_puls").arg(i);
+            if (curProg.contains(repsK))
+                calProg.insert(QStringLiteral("%1_reps").arg(newIdx), curProg.value(repsK));
+            if (curProg.contains(pulsK))
+                calProg.insert(QStringLiteral("%1_puls").arg(newIdx), curProg.value(pulsK));
+        }
+        changed = true;
+    }
+
+    if (changed) {
+        entry.insert(QStringLiteral("plan"), calPlan);
+        entry.insert(QStringLiteral("progress"), calProg);
+        m_calendar[idx] = entry;
+        save();
+        emit dataChanged();
+    }
 }
 
 void HammerGym::addSet(int exIdx)
@@ -727,7 +937,7 @@ void HammerGym::reorderExercise(int fromIdx, int toIdx)
 // ---------------------------------------------------------------- Übung anlegen/bearbeiten
 
 void HammerGym::addExercise(const QString &name, int sets, int reps,
-                            const QString &band, const QString &notiz)
+                             const QString &band, const QString &notiz)
 {
     const QString n = name.trimmed();
     if (n.isEmpty() || sets <= 0 || reps <= 0) {
@@ -735,12 +945,19 @@ void HammerGym::addExercise(const QString &name, int sets, int reps,
                      QStringLiteral("Name darf nicht leer sein und Sätze/Wdh. müssen positiv sein."));
         return;
     }
+    // Gewicht-Modus: freie Zahl zulassen; Band-Modus: validierter Farb-Key
+    QString validBand;
+    if (m_unitMode == QStringLiteral("gewicht")) {
+        validBand = band.trimmed();
+    } else {
+        validBand = BAND_OPTS.contains(band) ? band : BAND_OPTS.first();
+    }
     pushUndo();
     QVariantMap ex;
     ex.insert(QStringLiteral("name"), n);
     ex.insert(QStringLiteral("sets"), sets);
     ex.insert(QStringLiteral("reps"), reps);
-    ex.insert(QStringLiteral("band"), BAND_OPTS.contains(band) ? band : BAND_OPTS.first());
+    ex.insert(QStringLiteral("band"), validBand);
     ex.insert(QStringLiteral("notiz"), notiz.trimmed());
     QVariantList list = m_plan.value(m_currentDay).toList();
     list.append(ex);
@@ -750,7 +967,7 @@ void HammerGym::addExercise(const QString &name, int sets, int reps,
 }
 
 void HammerGym::saveEdit(int exIdx, const QString &name, int sets, int reps,
-                         const QString &band, const QString &notiz)
+                          const QString &band, const QString &notiz)
 {
     const QString n = name.trimmed();
     if (n.isEmpty() || sets <= 0 || reps <= 0) {
@@ -759,13 +976,19 @@ void HammerGym::saveEdit(int exIdx, const QString &name, int sets, int reps,
         return;
     }
     QVariantList list = m_plan.value(m_currentDay).toList();
-    if (exIdx < 0 || exIdx >= list.size()) return;
+    if (!(exIdx >= 0 && exIdx < list.size())) return;
+    QString validBand;
+    if (m_unitMode == QStringLiteral("gewicht")) {
+        validBand = band.trimmed();
+    } else {
+        validBand = BAND_OPTS.contains(band) ? band : BAND_OPTS.first();
+    }
     pushUndo();
     QVariantMap ex = list.at(exIdx).toMap();
     ex.insert(QStringLiteral("name"), n);
     ex.insert(QStringLiteral("sets"), sets);
     ex.insert(QStringLiteral("reps"), reps);
-    ex.insert(QStringLiteral("band"), BAND_OPTS.contains(band) ? band : BAND_OPTS.first());
+    ex.insert(QStringLiteral("band"), validBand);
     ex.insert(QStringLiteral("notiz"), notiz.trimmed());
     list[exIdx] = ex;
     m_plan.insert(m_currentDay, list);
@@ -847,9 +1070,26 @@ void HammerGym::moveDay(const QString &targetDay, bool merge)
 
 void HammerGym::setPause(const QString &notiz)
 {
-    Q_UNUSED(notiz); // Notiz wie im Original nur für ICS-Export genutzt
     pushUndo();
     setPauseInternal(m_currentDay, todayString());
+
+    // Ruhetag im In-App-Kalender festhalten
+    QVariantMap entry;
+    entry.insert(QStringLiteral("date"), todayString());
+    entry.insert(QStringLiteral("day"), m_currentDay);
+    entry.insert(QStringLiteral("type"), QStringLiteral("pause"));
+    if (!notiz.trimmed().isEmpty())
+        entry.insert(QStringLiteral("note"), notiz.trimmed());
+    for (int i = 0; i < m_calendar.size(); ++i) {
+        if (m_calendar.at(i).toMap().value(QStringLiteral("date")).toString() == entry.value(QStringLiteral("date"))) {
+            m_calendar[i] = entry;
+            entry.clear();
+            break;
+        }
+    }
+    if (!entry.isEmpty())
+        m_calendar.append(entry);
+
     save();
     recompute();
 }
@@ -858,6 +1098,18 @@ void HammerGym::clearPause()
 {
     pushUndo();
     clearPauseInternal(m_currentDay);
+
+    // Ruhetag-Eintrag für heute aus dem In-App-Kalender entfernen
+    const QString today = todayString();
+    for (int i = 0; i < m_calendar.size(); ++i) {
+        const QVariantMap e = m_calendar.at(i).toMap();
+        if (e.value(QStringLiteral("date")).toString() == today &&
+            e.value(QStringLiteral("type")).toString() == QStringLiteral("pause")) {
+            m_calendar.removeAt(i);
+            break;
+        }
+    }
+
     save();
     recompute();
 }
@@ -872,224 +1124,22 @@ void HammerGym::clearPauseInternal(const QString &day)
     m_pauses.remove(day);
 }
 
-// ---------------------------------------------------------------- ICS-Export / System-Kalender
-
-QString HammerGym::systemCalendarPath() const
-{
-    return QDir::homePath() + QStringLiteral("/.local/share/evolution/calendar/system/calendar.ics");
-}
-
-QString HammerGym::systemCalendarFile() const
-{
-    return systemCalendarPath();
-}
-
-void HammerGym::collectEvent(const QString &day, bool pause, QString &summary,
-                             QString &description, QString &dateStr, QString &dtendStr,
-                             QString &dtStr) const
-{
-    QVariantList exercises = m_plan.value(day).toList();
-    QVariantMap dayProg = m_progress.value(day).toMap();
-    if (m_completedDay == day && !m_completedPlan.isEmpty()) {
-        exercises = m_completedPlan;
-        dayProg = m_completedProgress;
-    }
-
-    const QDateTime now = QDateTime::currentDateTime();
-    dtStr = now.toString(QStringLiteral("yyyyMMddThhmmss"));
-    dateStr = now.date().toString(QStringLiteral("yyyyMMdd"));
-    dtendStr = now.date().addDays(1).toString(QStringLiteral("yyyyMMdd"));
-
-    summary.clear();
-    description.clear();
-
-    if (pause) {
-        summary = QStringLiteral("Hammer-Gym — %1 🛌 Ruhetag").arg(day);
-        description = QStringLiteral("Ruhetag — Erhol dich gut!");
-    } else {
-        QStringList lines;
-        for (int i = 0; i < exercises.size(); ++i) {
-            const QVariantMap ex = exercises.at(i).toMap();
-            const int sets = ex.value(QStringLiteral("sets")).toInt();
-            const int targetReps = ex.value(QStringLiteral("reps")).toInt();
-            const QString band = ex.value(QStringLiteral("band")).toString();
-            const QVariantMap repsData = dayProg.value(QStringLiteral("%1_reps").arg(i)).toMap();
-            const QVariantMap pulsData = dayProg.value(QStringLiteral("%1_puls").arg(i)).toMap();
-
-            QStringList setsInfo;
-            for (int s = 0; s < sets; ++s) {
-                QString line = QStringLiteral("  Satz %1: %2 Wdh.")
-                    .arg(s + 1)
-                    .arg(repsData.value(QString::number(s), targetReps).toString());
-                const QString puls = pulsData.value(QString::number(s)).toString();
-                if (!puls.isEmpty()) line += QStringLiteral(" | %1 bpm").arg(puls);
-                setsInfo << line;
-            }
-
-            QString name = ex.value(QStringLiteral("name")).toString();
-            if (!band.isEmpty())
-                name += QStringLiteral(" (%1-Band)").arg(band.left(1).toUpper() + band.mid(1));
-            lines << name + QStringLiteral("\\n") + setsInfo.join(QStringLiteral("\\n"));
-        }
-        description = lines.join(QStringLiteral("\\n\\n"));
-        const int t = stopwatchSeconds();
-        if (t > 0) {
-            const int h = t / 3600;
-            const int m = (t % 3600) / 60;
-            const int s = t % 60;
-            description += QStringLiteral("\\n\\n⏱ Trainingszeit: %1:%2:%3")
-                    .arg(h, 2, 10, QLatin1Char('0'))
-                    .arg(m, 2, 10, QLatin1Char('0'))
-                    .arg(s, 2, 10, QLatin1Char('0'));
-        }
-        summary = QStringLiteral("Hammer-Gym — %1 ✅").arg(day);
-    }
-}
-
-QString HammerGym::writeStandaloneIcs(const QString &day, const QString &uid,
-                                      const QString &dateStr, const QString &dtendStr,
-                                      const QString &dtStr, const QString &summary,
-                                      const QString &description)
-{
-    QString content;
-    content += QStringLiteral("BEGIN:VCALENDAR\r\n");
-    content += QStringLiteral("VERSION:2.0\r\n");
-    content += QStringLiteral("PRODID:-//Hammer-Gym//DE\r\n");
-    content += QStringLiteral("BEGIN:VEVENT\r\n");
-    content += QStringLiteral("UID:%1\r\n").arg(uid);
-    content += QStringLiteral("DTSTAMP:%1\r\n").arg(dtStr);
-    content += QStringLiteral("DTSTART;VALUE=DATE:%1\r\n").arg(dateStr);
-    content += QStringLiteral("DTEND;VALUE=DATE:%1\r\n").arg(dtendStr);
-    content += QStringLiteral("SUMMARY:%1\r\n").arg(summary);
-    content += QStringLiteral("DESCRIPTION:%1\r\n").arg(description);
-    content += QStringLiteral("END:VEVENT\r\n");
-    content += QStringLiteral("END:VCALENDAR\r\n");
-
-    const QString filename = QStringLiteral("hammer_gym_%1_%2.ics")
-        .arg(day, dateStr);
-    const QString filepath = icsDir() + QLatin1Char('/') + filename;
-
-    QFile out(filepath);
-    if (!out.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        qWarning() << "ICS konnte nicht geschrieben werden:" << filepath;
-        return QString();
-    }
-    out.write(content.toUtf8());
-    out.close();
-    return filepath;
-}
-
-void HammerGym::consumeCompleted(const QString &day)
-{
-    if (m_completedDay == day) {
-        m_completedDay.clear();
-        m_completedPlan.clear();
-        m_completedProgress.clear();
-    }
-}
-
-QString HammerGym::exportIcs()
-{
-    const QString day = m_currentDay;
-    const bool pause = pausedToday();
-    QString summary, description, dateStr, dtendStr, dtStr;
-    collectEvent(day, pause, summary, description, dateStr, dtendStr, dtStr);
-
-    const QDateTime now = QDateTime::currentDateTime();
-    const QString uid = QStringLiteral("%1@hammer-gym")
-        .arg(now.toString(QStringLiteral("yyyyMMddThhmmsszzz")));
-
-    const QString filepath = writeStandaloneIcs(day, uid, dateStr, dtendStr, dtStr,
-                                                summary, description);
-    if (filepath.isEmpty())
-        return QString();
-
-    consumeCompleted(day);
-    emit message(QStringLiteral("Kalender-Export"),
-                 QStringLiteral("ICS-Datei gespeichert:\n%1").arg(filepath));
-    return filepath;
-}
-
-QString HammerGym::addToSystemCalendar()
-{
-    const QString day = m_currentDay;
-    const bool pause = pausedToday();
-    QString summary, description, dateStr, dtendStr, dtStr;
-    collectEvent(day, pause, summary, description, dateStr, dtendStr, dtStr);
-
-    // Fester UID pro Tag -> doppeltes Exportieren legt keinen zweiten Termin an.
-    const QString calUid = QStringLiteral("hammer-gym-%1@hammer-gym").arg(dateStr);
-    const QString path = systemCalendarPath();
-
-    QByteArray data;
-    QFile in(path);
-    if (in.exists()) {
-        if (!in.open(QIODevice::ReadOnly)) {
-            emit message(QStringLiteral("Kalender"),
-                         QStringLiteral("System-Kalender konnte nicht gelesen werden:\n%1").arg(path));
-            return QString();
-        }
-        data = in.readAll();
-        in.close();
-        if (data.contains(calUid.toUtf8())) {
-            emit message(QStringLiteral("Kalender"),
-                         QStringLiteral("Ein Eintrag für %1 ist bereits im Kalender vorhanden.").arg(day));
-            return path;
-        }
-    }
-
-    QString vevent;
-    vevent += QStringLiteral("BEGIN:VEVENT\r\n");
-    vevent += QStringLiteral("UID:%1\r\n").arg(calUid);
-    vevent += QStringLiteral("DTSTAMP:%1\r\n").arg(dtStr);
-    vevent += QStringLiteral("DTSTART;VALUE=DATE:%1\r\n").arg(dateStr);
-    vevent += QStringLiteral("DTEND;VALUE=DATE:%1\r\n").arg(dtendStr);
-    vevent += QStringLiteral("SUMMARY:%1\r\n").arg(summary);
-    vevent += QStringLiteral("DESCRIPTION:%1\r\n").arg(description);
-    vevent += QStringLiteral("X-EVOLUTION-SEND-CALENDAR:TRUE\r\n");
-    vevent += QStringLiteral("STATUS:CONFIRMED\r\n");
-    vevent += QStringLiteral("TRANSP:TRANSPARENT\r\n");
-    vevent += QStringLiteral("END:VEVENT\r\n");
-
-    QByteArray content;
-    if (data.isEmpty()) {
-        QByteArray header;
-        header += "BEGIN:VCALENDAR\r\n";
-        header += "VERSION:2.0\r\n";
-        header += "PRODID:-//Hammer-Gym//DE\r\n";
-        content = header + vevent.toUtf8() + "END:VCALENDAR\r\n";
-    } else {
-        const int idx = data.lastIndexOf("END:VCALENDAR");
-        if (idx < 0) {
-            emit message(QStringLiteral("Kalender"),
-                         QStringLiteral("System-Kalender ist ungültig:\n%1").arg(path));
-            return QString();
-        }
-        QByteArray head = data.left(idx);
-        if (!head.endsWith('\n'))
-            head += '\n';
-        content = head + vevent.toUtf8() + data.mid(idx);
-    }
-
-    QFile out(path);
-    if (!out.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        emit message(QStringLiteral("Kalender"),
-                     QStringLiteral("System-Kalender konnte nicht geschrieben werden:\n%1").arg(path));
-        return QString();
-    }
-    out.write(content);
-    out.close();
-
-    const QString backup = writeStandaloneIcs(day, calUid, dateStr, dtendStr, dtStr,
-                                              summary, description);
-
-    consumeCompleted(day);
-
-    QString msg = QStringLiteral("Training wurde in den System-Kalender eingetragen.\nDer Kalender zeigt ihn automatisch an.");
-    if (!backup.isEmpty())
-        msg += QStringLiteral("\n\nBackup-ICS:\n%1").arg(backup);
-    emit message(QStringLiteral("Kalender-Eintrag"), msg);
-    return path;
-}
-
 QStringList HammerGym::bandOptions() const { return BAND_OPTS; }
+
+QString HammerGym::unitMode() const { return m_unitMode; }
+
+void HammerGym::setUnitMode(const QString &mode)
+{
+    const QString m = (mode == QStringLiteral("gewicht")) ? QStringLiteral("gewicht")
+                                                          : QStringLiteral("band");
+    if (m == m_unitMode) return;
+    m_unitMode = m;
+    save();
+    emit unitModeChanged();
+    emit dataChanged();
+}
+
+QVariantList HammerGym::calendarEntries() const
+{
+    return m_calendar;
+}

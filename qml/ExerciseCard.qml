@@ -15,6 +15,7 @@ Rectangle {
     signal removeSetRequested(int idx)
     signal saveSetRequested(int exIdx, int setIdx, bool checked, int reps, string puls)
     signal focusRequested(int idx)                      // Tipp auf den Kopf → Vollbild
+    signal moveRequested(int idx, int direction)        // Pfeile: -1 hoch, +1 runter
     signal moveDragStart(int idx)
     signal moveDragMove(int idx, real yLocal)
     signal moveDragEnd(int idx)
@@ -197,7 +198,7 @@ Rectangle {
 
                 Label {
                     text: "Puls:"
-                    color: "#ff6666"
+                    color: "#ff8888"
                     font.pixelSize: 11
                     anchors.verticalCenter: parent.verticalCenter
                 }
@@ -209,10 +210,16 @@ Rectangle {
                     padding: 5
                     font.pixelSize: 13
                     color: "#ffffff"
+                    placeholderText: "–"
                     selectByMouse: true
                     inputMethodHints: Qt.ImhDigitsOnly
                     verticalAlignment: Text.AlignVCenter
-                    background: Rectangle { color: "#222233"; radius: 4 }
+                    background: Rectangle {
+                        color: "#3a2a2a"
+                        radius: 4
+                        border.width: 1
+                        border.color: "#a05555"
+                    }
                     onEditingFinished: {
                         card.saveSetRequested(exIndex, setIndex, setRow.done,
                                               (repField.text.length > 0 ? parseInt(repField.text) : 0),
@@ -236,19 +243,33 @@ Rectangle {
             leftPadding: 12
 
             BaseButton {
-                text: "＋ Satz"
+                text: "+  Satz"
                 bWidth: 80
                 bHeight: 26
-                btnColor: "#1a3a1a"
+                btnColor: "#2f2f3f"
                 onClicked: card.addSetRequested(exIndex)
             }
             BaseButton {
-                text: "➖ Satz"
+                text: "−  Satz"
                 bWidth: 80
                 bHeight: 26
-                btnColor: "#3a1a1a"
+                btnColor: "#2f2f3f"
                 visible: exData.sets > 1
                 onClicked: card.removeSetRequested(exIndex)
+            }
+            BaseButton {
+                text: "▲"
+                bWidth: 26
+                bHeight: 26
+                btnColor: "#3a3a4a"
+                onClicked: card.moveRequested(exIndex, -1)
+            }
+            BaseButton {
+                text: "▼"
+                bWidth: 26
+                bHeight: 26
+                btnColor: "#3a3a4a"
+                onClicked: card.moveRequested(exIndex, +1)
             }
         }
     }
